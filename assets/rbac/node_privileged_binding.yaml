@@ -1,0 +1,12 @@
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: secrets-store-node-privileged-binding
+subjects:
+- kind: ServiceAccount
+  name: secrets-store-csi-driver-node-sa
+  namespace: ${NAMESPACE}
+roleRef:
+  kind: ClusterRole
+  name: secrets-store-privileged-role
+  apiGroup: rbac.authorization.k8s.io

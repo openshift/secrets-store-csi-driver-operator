@@ -1,0 +1,147 @@
+kind: DaemonSet
+apiVersion: apps/v1
+metadata:
+  name: secrets-store-csi-driver-node
+  namespace: ${NAMESPACE}
+spec:
+  selector:
+    matchLabels:
+      app: secrets-store-csi-driver-node
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 10%
+  template:
+    metadata:
+      labels:
+        app: secrets-store-csi-driver-node
+      annotations:
+        target.workload.openshift.io/management: '{"effect": "PreferredDuringScheduling"}'
+    spec:
+      serviceAccountName: secrets-store-csi-driver-node-sa
+      priorityClassName: system-node-critical
+      tolerations:
+      - operator: Exists
+      nodeSelector:
+        kubernetes.io/os: linux
+      containers:
+        - name: csi-driver
+          securityContext:
+            privileged: true
+          image: ${DRIVER_IMAGE}
+          imagePullPolicy: IfNotPresent
+          args:
+            - "--endpoint=$(CSI_ENDPOINT)"
+            - "--logtostderr"
+            - "--v=${LOG_LEVEL}"
+            - "--nodeid=$(KUBE_NODE_NAME)"
+            - "--provider-volume=/var/run/secrets-store-csi-providers"
+            - "--additional-provider-volume-paths=/etc/kubernetes/secrets-store-csi-providers"
+            - "--metrics-addr=:8095"
+            - "--enable-secret-rotation=false"
+            - "--rotation-poll-interval=2m"
+            - "--provider-health-check=false"
+            - "--provider-health-check-interval=2m"
+          env:
+            - name: CSI_ENDPOINT
+              value: unix:///csi/csi.sock
+            - name: KUBE_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          volumeMounts:
+            - name: mountpoint-dir
+              mountPath: /var/lib/kubelet/pods
+              mountPropagation: Bidirectional
+            - name: plugin-dir
+              mountPath: /csi
+            - name: providers-dir
+              mountPath: /etc/kubernetes/secrets-store-csi-providers
+            - name: providers-dir-0
+              mountPath: /var/run/secrets-store-csi-providers
+          ports:
+            - containerPort: 9808
+              name: healthz
+              protocol: TCP
+            - containerPort: 8095
+              name: metrics
+              protocol: TCP
+          livenessProbe:
+              httpGet:
+                path: /healthz
+                port: healthz
+              initialDelaySeconds: 30
+              timeoutSeconds: 10
+              periodSeconds: 15
+              failureThreshold: 5
+          resources:
+            requests:
+              memory: 50Mi
+              cpu: 10m
+        - name: csi-node-driver-registrar
+          securityContext:
+            privileged: true
+          image: ${NODE_DRIVER_REGISTRAR_IMAGE}
+          imagePullPolicy: IfNotPresent
+          args:
+            - --v=${LOG_LEVEL}
+            - --csi-address=/csi/csi.sock
+            - --kubelet-registration-path=/var/lib/kubelet/plugins/csi-secrets-store/csi.sock
+          env:
+            - name: KUBE_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          livenessProbe:
+            exec:
+              command:
+              - /csi-node-driver-registrar
+              - --kubelet-registration-path=/var/lib/kubelet/plugins/csi-secrets-store/csi.sock
+              - --mode=kubelet-registration-probe
+            initialDelaySeconds: 30
+            timeoutSeconds: 15
+          volumeMounts:
+            - name: plugin-dir
+              mountPath: /csi
+            - name: registration-dir
+              mountPath: /registration
+          resources:
+            requests:
+              memory: 50Mi
+              cpu: 10m
+        - name: csi-liveness-probe
+          image: ${LIVENESS_PROBE_IMAGE}
+          imagePullPolicy: IfNotPresent
+          args:
+          - --csi-address=/csi/csi.sock
+          - --probe-timeout=3s
+          - --http-endpoint=0.0.0.0:9808
+          - --v=${LOG_LEVEL}
+          volumeMounts:
+            - name: plugin-dir
+              mountPath: /csi
+          resources:
+            requests:
+              memory: 50Mi
+              cpu: 10m
+      volumes:
+        - name: mountpoint-dir
+          hostPath:
+            path: /var/lib/kubelet/pods
+            type: DirectoryOrCreate
+        - name: registration-dir
+          hostPath:
+            path: /var/lib/kubelet/plugins_registry/
+            type: Directory
+        - name: plugin-dir
+          hostPath:
+            path: /var/lib/kubelet/plugins/csi-secrets-store/
+            type: DirectoryOrCreate
+        - name: providers-dir
+          hostPath:
+            path: /etc/kubernetes/secrets-store-csi-providers
+            type: DirectoryOrCreate
+        - name: providers-dir-0
+          hostPath:
+            path: /var/run/secrets-store-csi-providers
+            type: DirectoryOrCreate
