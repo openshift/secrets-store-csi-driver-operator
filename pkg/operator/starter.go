@@ -76,7 +76,6 @@ func RunOperator(ctx context.Context, controllerConfig *controllercmd.Controller
 			"rbac/node_privileged_binding.yaml",
 			"rbac/secretproviderclasses_role.yaml",
 			"rbac/secretproviderclasses_binding.yaml",
-			// TODO: deploy CRD's
 		},
 	).WithCSIConfigObserverController(
 		"SecretsStoreDriverCSIConfigObserverController",

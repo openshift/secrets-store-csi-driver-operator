@@ -1,0 +1,15 @@
+updates:
+  - file: "preview/secrets-store-csi-driver-operator.clusterserviceversion.yaml" # relative to this file
+    update_list:
+    # replace metadata.name value
+    - search: "secrets-store-csi-driver-operator.v{MAJOR}.{MINOR}.0"
+      replace: "secrets-store-csi-driver-operator.v{FULL_VER}"
+    # replace entire version line, otherwise would replace 4.3.0 anywhere
+    - search: "version: {MAJOR}.{MINOR}.0"
+      replace: "version: {FULL_VER}"
+    - search: 'olm.skipRange: ">=4.14.0-0 <{MAJOR}.{MINOR}.0"'
+      replace: 'olm.skipRange: ">=4.14.0-0 <{FULL_VER}"'
+  - file: "secrets-store-csi-driver-operator.package.yaml"
+    update_list:
+    - search: "currentCSV: secrets-store-csi-driver-operator.v{MAJOR}.{MINOR}.0"
+      replace: "currentCSV: secrets-store-csi-driver-operator.{FULL_VER}"

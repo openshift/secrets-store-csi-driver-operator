@@ -1,0 +1,21 @@
+---
+kind: ImageStream
+apiVersion: image.openshift.io/v1
+spec:
+  tags:
+  - name: secrets-store-csi-driver-rhel8-operator
+    from:
+      kind: DockerImage
+      name: quay.io/openshift/origin-secrets-store-csi-driver-operator:latest
+  - name: secrets-store-csi-driver-container-rhel8
+    from:
+      kind: DockerImage
+      name: quay.io/openshift/origin-secrets-store-csi-driver:latest
+  - name: csi-node-driver-registrar
+    from:
+      kind: DockerImage
+      name: quay.io/openshift/origin-csi-node-driver-registrar:latest
+  - name: csi-livenessprobe
+    from:
+      kind: DockerImage
+      name: quay.io/openshift/origin-csi-livenessprobe:latest
