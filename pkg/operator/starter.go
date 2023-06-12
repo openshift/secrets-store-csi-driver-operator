@@ -15,7 +15,6 @@ import (
 	configclient "github.com/openshift/client-go/config/clientset/versioned"
 	configinformers "github.com/openshift/client-go/config/informers/externalversions"
 	"github.com/openshift/library-go/pkg/controller/controllercmd"
-	"github.com/openshift/library-go/pkg/controller/factory"
 	"github.com/openshift/library-go/pkg/operator/csi/csicontrollerset"
 	"github.com/openshift/library-go/pkg/operator/csi/csidrivernodeservicecontroller"
 	goc "github.com/openshift/library-go/pkg/operator/genericoperatorclient"
@@ -88,10 +87,7 @@ func RunOperator(ctx context.Context, controllerConfig *controllercmd.Controller
 		"node.yaml",
 		kubeClient,
 		kubeInformersForNamespaces.InformersFor(operatorNamespace),
-		[]factory.Informer{
-			configMapInformer.Informer(),
-		},
-		csidrivernodeservicecontroller.WithObservedProxyDaemonSetHook(),
+		nil,
 		csidrivernodeservicecontroller.WithCABundleDaemonSetHook(
 			operatorNamespace,
 			trustedCAConfigMap,
