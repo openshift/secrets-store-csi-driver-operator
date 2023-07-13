@@ -38,7 +38,7 @@ spec:
             - "--provider-volume=/var/run/secrets-store-csi-providers"
             - "--additional-provider-volume-paths=/etc/kubernetes/secrets-store-csi-providers"
             - "--metrics-addr=:8095"
-            - "--enable-secret-rotation=false"
+            - "--enable-secret-rotation=true"
             - "--rotation-poll-interval=2m"
             - "--provider-health-check=false"
             - "--provider-health-check-interval=2m"
