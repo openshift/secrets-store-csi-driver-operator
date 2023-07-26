@@ -92,14 +92,6 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
-          livenessProbe:
-            exec:
-              command:
-              - /csi-node-driver-registrar
-              - --kubelet-registration-path=/var/lib/kubelet/plugins/csi-secrets-store/csi.sock
-              - --mode=kubelet-registration-probe
-            initialDelaySeconds: 30
-            timeoutSeconds: 15
           volumeMounts:
             - name: plugin-dir
               mountPath: /csi
