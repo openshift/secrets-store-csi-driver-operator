@@ -1,0 +1,23 @@
+#!/bin/bash
+
+SUBSCRIPTION_NAME=${SUBSCRIPTION_NAME:-secrets-store-csi-driver-operator}
+DESTINATION_DIR=${DESTINATION_DIR:-must-gather/}
+
+NAMESPACE=$(/usr/bin/oc get subscription --all-namespaces --field-selector="metadata.name=${SUBSCRIPTION_NAME}" --output='jsonpath={.items[0].metadata.namespace}')
+if [ $? -ne 0 ]; then
+	echo "Failed to find namespace for subscription ${SUBSCRIPTION_NAME}"
+	exit 1
+fi
+echo "Found subscription ${SUBSCRIPTION_NAME} in namespace ${NAMESPACE}"
+
+/usr/bin/oc adm inspect namespace/${NAMESPACE} --dest-dir=must-gather/
+
+for CRD in $(/usr/bin/oc get crd | grep secrets-store.csi.x-k8s.io | awk '{print $1}'); do
+    echo "Gathering data for CRD ${CRD}"
+    /usr/bin/oc adm inspect ${CRD} --all-namespaces --dest-dir=must-gather/
+done
+
+echo "Gathering data for ClusterCSIDrivers and CSIDrivers"
+/usr/bin/oc adm inspect clustercsidrivers,csidrivers --dest-dir=must-gather/
+
+exit 0

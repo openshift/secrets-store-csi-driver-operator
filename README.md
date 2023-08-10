@@ -34,7 +34,7 @@ export LIVENESS_PROBE_IMAGE=quay.io/openshift/origin-csi-livenessprobe:latest
 
 # OLM
 
-To build an bundle and index images, use the `hack/create-bundle` script:
+To build bundle and index images, use the `hack/create-bundle` script:
 
 ```shell
 cd hack
@@ -42,3 +42,23 @@ cd hack
 ```
 
 At the end it will print a command that creates `Subscription` for the newly created index image.
+
+# Using the must-gather image
+
+The `must-gather` image for secrets-store-csi-driver-operator supplements the [openshift/must-gather](https://github.com/openshift/must-gather) image to gather Secrets Store related resources.
+
+```shell
+oc adm must-gather --image=quay.io/openshift/origin-secrets-store-csi-mustgather:latest
+```
+
+This command creates a must-gather containing:
+- Logs and resources in the operator namespace (`openshift-cluster-csi-drivers`)
+- `SecretProviderClass` and `SecretProviderClassPodStatus` objects
+- `ClusterCSIDriver` and `CSIDriver` objects
+
+To build the `must-gather` image locally:
+
+```shell
+REPO=quay.io/<user>/secrets-store-csi-mustgather:latest
+docker build -t ${REPO} -f Dockerfile.mustgather .
+```
