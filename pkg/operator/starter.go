@@ -18,6 +18,7 @@ import (
 	"github.com/openshift/library-go/pkg/operator/csi/csicontrollerset"
 	"github.com/openshift/library-go/pkg/operator/csi/csidrivernodeservicecontroller"
 	goc "github.com/openshift/library-go/pkg/operator/genericoperatorclient"
+	"github.com/openshift/library-go/pkg/operator/management"
 	"github.com/openshift/library-go/pkg/operator/resource/resourceapply"
 	"github.com/openshift/library-go/pkg/operator/v1helpers"
 	"github.com/openshift/secrets-store-csi-driver-operator/assets"
@@ -62,8 +63,8 @@ func RunOperator(ctx context.Context, controllerConfig *controllercmd.Controller
 	).WithLogLevelController().WithManagementStateController(
 		operandName,
 		true, // Set this operator as removable
-	).WithStaticResourcesController(
-		"SecretsStoreStaticResourcesController",
+	).WithConditionalStaticResourcesController(
+		"SecretsStoreConditionalStaticResourcesController",
 		kubeClient,
 		dynamicClient,
 		kubeInformersForNamespaces,
@@ -76,6 +77,12 @@ func RunOperator(ctx context.Context, controllerConfig *controllercmd.Controller
 			"rbac/node_privileged_binding.yaml",
 			"rbac/secretproviderclasses_role.yaml",
 			"rbac/secretproviderclasses_binding.yaml",
+		},
+		func() bool {
+			return getOperatorSyncState(operatorClient) == opv1.Managed
+		},
+		func() bool {
+			return getOperatorSyncState(operatorClient) == opv1.Removed
 		},
 	).WithCSIConfigObserverController(
 		"SecretsStoreDriverCSIConfigObserverController",
@@ -115,4 +122,36 @@ func replaceNamespaceFunc(namespace string) resourceapply.AssetFunc {
 		}
 		return bytes.ReplaceAll(content, []byte(namespaceKey), []byte(namespace)), nil
 	}
+}
+
+// getOperatorSyncState returns the management state of the operator to determine
+// how to sync conditional resources. It returns one of the following states:
+//
+//	Managed: resources should be synced
+//	Unmanaged: resources should NOT be synced
+//	Removed: resources should be deleted
+//
+// Errors fetching the operator state will log an error and return Unmanaged
+// to avoid syncing resources when the actual state is unknown.
+func getOperatorSyncState(operatorClient v1helpers.OperatorClientWithFinalizers) opv1.ManagementState {
+	opSpec, _, _, err := operatorClient.GetOperatorState()
+	if err != nil {
+		klog.Errorf("Failed to get operator state: %v", err)
+		return opv1.Unmanaged
+	}
+	// return the state from the operator if it's not managed
+	if opSpec.ManagementState != opv1.Managed {
+		return opSpec.ManagementState
+	}
+	meta, err := operatorClient.GetObjectMeta()
+	if err != nil {
+		klog.Errorf("Failed to get operator object meta: %v", err)
+		return opv1.Unmanaged
+	}
+	// deletion timestamp is treated the same as the state being removed
+	if management.IsOperatorRemovable() && meta.DeletionTimestamp != nil {
+		klog.Infof("Operator deletion timestamp is set, removing conditional resources")
+		return opv1.Removed
+	}
+	return opv1.Managed
 }
