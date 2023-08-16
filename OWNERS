@@ -4,6 +4,6 @@ approvers:
 - gnufied
 - jsafrane
 - RomanBednar
-- tsmetana
 - mpatlasov
+- tsmetana
 component: "Storage / Operators"
