@@ -24,7 +24,7 @@ IMAGE_REGISTRY?=registry.svc.ci.openshift.org
 # $3 - Dockerfile path
 # $4 - context directory for image build
 # It will generate target "image-$(1)" for building the image and binding it as a prerequisite to target "images".
-$(call build-image,secrets-store-csi-driver-operator,$(IMAGE_REGISTRY)/ocp/4.14:secrets-store-csi-driver-operator,./Dockerfile.openshift,.)
+$(call build-image,secrets-store-csi-driver-operator,$(IMAGE_REGISTRY)/ocp/4.15:secrets-store-csi-driver-operator,./Dockerfile.openshift,.)
 
 clean:
 	$(RM) secrets-store-csi-driver-operator
