@@ -3,7 +3,7 @@ kind: ImageStream
 apiVersion: image.openshift.io/v1
 spec:
   tags:
-  - name: secrets-store-csi-driver-rhel8-operator
+  - name: secrets-store-csi-driver-operator
     from:
       kind: DockerImage
       name: quay.io/openshift/origin-secrets-store-csi-driver-operator:latest
