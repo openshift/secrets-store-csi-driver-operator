@@ -3,7 +3,6 @@ package operator
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"time"
 
 	"k8s.io/client-go/dynamic"
@@ -111,7 +110,7 @@ func RunOperator(ctx context.Context, controllerConfig *controllercmd.Controller
 
 	<-ctx.Done()
 
-	return fmt.Errorf("stopped")
+	return nil
 }
 
 func replaceNamespaceFunc(namespace string) resourceapply.AssetFunc {
