@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Store PIDs of all the subprocesses
+pids=()
+
 SUBSCRIPTION_NAME=${SUBSCRIPTION_NAME:-secrets-store-csi-driver-operator}
 DESTINATION_DIR=${DESTINATION_DIR:-must-gather/}
 
@@ -10,14 +13,24 @@ if [ $? -ne 0 ]; then
 fi
 echo "Found subscription ${SUBSCRIPTION_NAME} in namespace ${NAMESPACE}"
 
-/usr/bin/oc adm inspect namespace/${NAMESPACE} --dest-dir=must-gather/
+/usr/bin/oc adm inspect namespace/${NAMESPACE} --dest-dir=must-gather/ &
+pids+=($!)
 
 for CRD in $(/usr/bin/oc get crd | grep secrets-store.csi.x-k8s.io | awk '{print $1}'); do
     echo "Gathering data for CRD ${CRD}"
-    /usr/bin/oc adm inspect ${CRD} --all-namespaces --dest-dir=must-gather/
+    /usr/bin/oc adm inspect ${CRD} --all-namespaces --dest-dir=must-gather/ &
+    pids+=($!)
 done
 
 echo "Gathering data for ClusterCSIDrivers and CSIDrivers"
-/usr/bin/oc adm inspect clustercsidrivers,csidrivers --dest-dir=must-gather/
+/usr/bin/oc adm inspect clustercsidrivers,csidrivers --dest-dir=must-gather/ &
+pids+=($!)
+
+# Check if PID array has any values, if so, wait for them to finish
+if [ ${#pids[@]} -ne 0 ]; then
+    echo "Waiting on subprocesses to finish execution."
+    wait "${pids[@]}"
+fi
+
 
 exit 0
