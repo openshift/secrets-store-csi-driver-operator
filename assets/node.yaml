@@ -88,12 +88,16 @@ spec:
           args:
             - --v=${LOG_LEVEL}
             - --csi-address=/csi/csi.sock
+            - --http-endpoint=:10304
             - --kubelet-registration-path=/var/lib/kubelet/plugins/csi-secrets-store/csi.sock
           env:
             - name: KUBE_NODE_NAME
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
+          ports:
+            - containerPort: 10304
+              name: rhealthz
           volumeMounts:
             - name: plugin-dir
               mountPath: /csi
@@ -103,6 +107,14 @@ spec:
             requests:
               memory: 50Mi
               cpu: 10m
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: rhealthz
+            initialDelaySeconds: 10
+            timeoutSeconds: 3
+            periodSeconds: 10
+            failureThreshold: 5
         - name: csi-liveness-probe
           image: ${LIVENESS_PROBE_IMAGE}
           imagePullPolicy: IfNotPresent
