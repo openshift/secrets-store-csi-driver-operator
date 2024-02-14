@@ -7,7 +7,7 @@ spec:
     from:
       kind: DockerImage
       name: quay.io/openshift/origin-secrets-store-csi-driver-operator:latest
-  - name: secrets-store-csi-driver-container-rhel8
+  - name: secrets-store-csi-driver-container
     from:
       kind: DockerImage
       name: quay.io/openshift/origin-secrets-store-csi-driver:latest
