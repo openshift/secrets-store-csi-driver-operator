@@ -1,5 +1,8 @@
 #!/bin/bash
 
+source $(dirname "$0")/gather-common.sh
+get_log_collection_args
+
 SUBSCRIPTION_NAME=${SUBSCRIPTION_NAME:-secrets-store-csi-driver-operator}
 DESTINATION_DIR=${DESTINATION_DIR:-must-gather/}
 
@@ -10,14 +13,14 @@ if [ $? -ne 0 ]; then
 fi
 echo "Found subscription ${SUBSCRIPTION_NAME} in namespace ${NAMESPACE}"
 
-/usr/bin/oc adm inspect namespace/${NAMESPACE} --dest-dir=must-gather/
+/usr/bin/oc adm inspect ${log_collection_args} namespace/${NAMESPACE} --dest-dir=must-gather/
 
 for CRD in $(/usr/bin/oc get crd | grep secrets-store.csi.x-k8s.io | awk '{print $1}'); do
     echo "Gathering data for CRD ${CRD}"
-    /usr/bin/oc adm inspect ${CRD} --all-namespaces --dest-dir=must-gather/
+    /usr/bin/oc adm inspect ${log_collection_args} ${CRD} --all-namespaces --dest-dir=must-gather/
 done
 
 echo "Gathering data for ClusterCSIDrivers and CSIDrivers"
-/usr/bin/oc adm inspect clustercsidrivers,csidrivers --dest-dir=must-gather/
+/usr/bin/oc adm inspect ${log_collection_args} clustercsidrivers,csidrivers --dest-dir=must-gather/
 
 exit 0
