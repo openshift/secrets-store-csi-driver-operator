@@ -102,6 +102,7 @@ spec:
     - mountPath: /mnt/test-vol
       name: test-vol
       readOnly: true
+    terminationMessagePolicy: FallbackToLogsOnError
   volumes:
   - csi:
       driver: ${PROVISIONER_NAME}
