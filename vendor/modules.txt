@@ -315,6 +315,9 @@ github.com/openshift/library-go/pkg/operator/resourcesynccontroller
 github.com/openshift/library-go/pkg/operator/staticresourcecontroller
 github.com/openshift/library-go/pkg/operator/v1helpers
 github.com/openshift/library-go/pkg/serviceability
+# github.com/openshift/must-gather v0.0.0-20240606205211-408ab8661885 => ../must-gather
+## explicit; go 1.22
+github.com/openshift/must-gather/collection-scripts
 # github.com/pkg/errors v0.9.1
 ## explicit
 github.com/pkg/errors
@@ -1285,3 +1288,4 @@ sigs.k8s.io/structured-merge-diff/v4/value
 ## explicit; go 1.12
 sigs.k8s.io/yaml
 sigs.k8s.io/yaml/goyaml.v2
+# github.com/openshift/must-gather => ../must-gather
