@@ -1,5 +1,5 @@
 updates:
-  - file: "preview/secrets-store-csi-driver-operator.clusterserviceversion.yaml" # relative to this file
+  - file: "stable/secrets-store-csi-driver-operator.clusterserviceversion.yaml" # relative to this file
     update_list:
     # replace metadata.name value
     - search: "secrets-store-csi-driver-operator.v{MAJOR}.{MINOR}.0"
