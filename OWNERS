@@ -6,4 +6,7 @@ approvers:
 - RomanBednar
 - mpatlasov
 - tsmetana
+- mytreya-rh
+- TrilokGeer
+- arkadeepsen
 component: "Storage / Operators"
