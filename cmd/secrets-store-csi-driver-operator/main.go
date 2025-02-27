@@ -1,6 +1,7 @@
 package main
 
 import (
+	"k8s.io/utils/clock"
 	"os"
 
 	"github.com/openshift/library-go/pkg/controller/controllercmd"
@@ -31,6 +32,7 @@ func NewOperatorCommand() *cobra.Command {
 		"secrets-store-csi-driver-operator",
 		version.Get(),
 		operator.RunOperator,
+		clock.RealClock{},
 	).NewCommand()
 	ctrlCmd.Use = "start"
 	ctrlCmd.Short = "Start the Secrets Store CSI Driver Operator"
