@@ -8,6 +8,9 @@ include $(addprefix ./vendor/github.com/openshift/build-machinery-go/make/, \
 	targets/openshift/images.mk \
 )
 
+GO :=CGO_ENABLED=1 GOEXPERIMENT=strictfipsruntime go
+GO_BUILD_FLAGS :=-trimpath -tags strictfipsruntime,openssl
+
 # Run core verification and all self contained tests.
 #
 # Example:
