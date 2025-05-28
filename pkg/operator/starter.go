@@ -90,6 +90,10 @@ func RunOperator(ctx context.Context, controllerConfig *controllercmd.Controller
 			"rbac/node_privileged_binding.yaml",
 			"rbac/secretproviderclasses_role.yaml",
 			"rbac/secretproviderclasses_binding.yaml",
+			"network-policy/allow-egress-to-api-server-operator.yaml",
+			"network-policy/allow-ingress-to-metrics-operator.yaml",
+			"network-policy/allow-egress-to-api-server-operand.yaml",
+			"network-policy/allow-ingress-to-metrics-operand.yaml",
 		},
 		func() bool {
 			return getOperatorSyncState(operatorClient) == opv1.Managed
