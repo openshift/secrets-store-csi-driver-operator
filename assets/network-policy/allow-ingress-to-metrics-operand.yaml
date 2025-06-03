@@ -1,7 +1,7 @@
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: allow-ingress-to-metrics-operand
+  name: sscsi-allow-ingress-to-metrics-operand
   namespace: ${NAMESPACE}
 spec:
   podSelector:
