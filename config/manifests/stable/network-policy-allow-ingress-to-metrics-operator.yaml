@@ -1,15 +1,14 @@
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: sscsi-allow-egress-to-api-server-operator
-  namespace: ${NAMESPACE}
+  name: sscsi-allow-ingress-to-metrics-operator
 spec:
   podSelector:
     matchLabels:
       app: secrets-store-csi-driver-operator
   policyTypes:
-    - Egress
-  egress:
+    - Ingress
+  ingress:
     - ports:
         - protocol: TCP
-          port: 6443
+          port: 8443
