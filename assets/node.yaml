@@ -15,6 +15,7 @@ spec:
     metadata:
       labels:
         app: secrets-store-csi-driver-node
+        openshift.storage.network-policy.api-server: allow
       annotations:
         target.workload.openshift.io/management: '{"effect": "PreferredDuringScheduling"}'
         # This annotation prevents eviction from the cluster-autoscaler
