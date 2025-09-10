@@ -1,3 +1,9 @@
+CURPATH=$(PWD)
+BIN_PATH=$(CURPATH)/bin
+YQ = $(BIN_PATH)/yq
+YQ_VERSION = v4.47.1
+export PATH := $(BIN_PATH):$(PATH)
+
 all: build
 .PHONY: all
 
@@ -6,7 +12,21 @@ include $(addprefix ./vendor/github.com/openshift/build-machinery-go/make/, \
 	golang.mk \
 	targets/openshift/deps-gomod.mk \
 	targets/openshift/images.mk \
+	targets/openshift/yq.mk \
 )
+
+# Bump OCP version in CSV and OLM metadata
+# Also updates the Makefile and README.md to the new version
+#
+# Example:
+#   make metadata VERSION=4.20.0
+metadata: ensure-yq
+ifdef VERSION
+	./hack/update-metadata.sh $(VERSION)
+else
+	./hack/update-metadata.sh
+endif
+.PHONY: metadata
 
 # Check if GOEXPERIMENT=strictfipsruntime is supported
 GOEXPERIMENT_SUPPORTED := $(shell GOEXPERIMENT=strictfipsruntime go version >/dev/null 2>&1 && echo "true" || echo "false")
@@ -40,7 +60,7 @@ IMAGE_REGISTRY?=registry.svc.ci.openshift.org
 # It will generate target "image-$(1)" for building the image and binding it as a prerequisite to target "images".
 $(call build-image,secrets-store-csi-driver-operator,$(IMAGE_REGISTRY)/ocp/4.21:secrets-store-csi-driver-operator,./Dockerfile.openshift,.)
 
-clean:
+clean: clean-yq
 	$(RM) secrets-store-csi-driver-operator
 .PHONY: clean
 
