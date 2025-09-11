@@ -32,6 +32,13 @@ export LIVENESS_PROBE_IMAGE=quay.io/openshift/origin-csi-livenessprobe:latest
 ./secrets-store-csi-driver-operator start --kubeconfig $KUBECONFIG --namespace openshift-cluster-csi-drivers
 ```
 
+## Bumping OCP version in CSV and OLM metadata
+
+This updates the package versions in `config/manifests/secrets-store-csi-driver-operator.package.yaml`, `config/manifests/stable/secrets-store-csi-driver-operator.clusterserviceversion.yaml`, `README.md` and `Makefile` to 4.20:
+```
+./hack/update-metadata.sh 4.20
+```
+
 # OLM
 
 To build bundle and index images, use the `hack/create-bundle` script:
