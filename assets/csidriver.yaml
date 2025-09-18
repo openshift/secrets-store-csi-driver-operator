@@ -12,3 +12,5 @@ spec:
   fsGroupPolicy: File
   volumeLifecycleModes:
   - Ephemeral
+  tokenRequests:
+  - audience: api://AzureADTokenExchange
