@@ -8,8 +8,19 @@ include $(addprefix ./vendor/github.com/openshift/build-machinery-go/make/, \
 	targets/openshift/images.mk \
 )
 
+# Check if GOEXPERIMENT=strictfipsruntime is supported
+GOEXPERIMENT_SUPPORTED := $(shell GOEXPERIMENT=strictfipsruntime go version >/dev/null 2>&1 && echo "true" || echo "false")
+
+ifeq ($(GOEXPERIMENT_SUPPORTED),true)
+$(info strictfipsruntime is supported, building with FIPS compliance)
 GO :=CGO_ENABLED=1 GOEXPERIMENT=strictfipsruntime go
 GO_BUILD_FLAGS :=-trimpath -tags strictfipsruntime,openssl
+else
+$(warning WARN: building without FIPS support, GOEXPERIMENT strictfipsruntime is not available in the go compiler)
+$(warning WARN: this build cannot be used in CI or production, due to lack of FIPS!!)
+GO :=CGO_ENABLED=1 go
+GO_BUILD_FLAGS :=-trimpath
+endif
 
 # Run core verification and all self contained tests.
 #
