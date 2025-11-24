@@ -1,0 +1,75 @@
+﻿apiVersion: console.openshift.io/v1
+kind: ConsoleQuickStart
+metadata:
+  name: secrets-store-csi-install
+spec:
+  displayName: Install the Secrets Store CSI Driver Operator
+  tags:
+    - example
+    - install
+    - operator
+  durationMinutes: 5
+  description: |-
+    Install the secrets store csi driver operator to manage credentials sourced from an external secrets manager (Conjur, Vault)
+  introduction: |-
+    # Secrets Store CSI Driver Operator
+
+    The secrets store csi driver operator enables you to bring secrets or other "confidential material" into an OpenShift cluster
+    from an external source such as HashiCorp Vault, Azure Key Vault, or any of the cloud service provider secrets managers.
+
+    ## Usage
+
+    You can use a `SecretProviderClass` to define how to connect to the secrets manager and which credentials to pull.
+    These credentials will be mounted to an ephemeral volume on a running workload.
+  tasks:
+    - title: Install the Secrets Store CSI Driver Operator
+      description: |-
+        ### To install the operator:
+        1. From the **Administrators** perspective, go to the **OperatorHub** from the [Operators]{{highlight qs-nav-operators}} section of the navigation.
+        2. In the **Filter by keyword** field, type `Secrets Store CSI`.
+        3. Look for **Secrets Store CSI Driver Operator**. If the tile has an **Installed** label on it, the Operator is already installed, and you can close this Quick Start.
+        4. Click the tile to open the side panel.
+        5. At the top of the side panel, click **Install**.
+        6. Verify that the **Operator Update Channel** is set to the latest version, then click **Install**. You may need to "Approve" the installation.
+        7. Wait for the Secrets Store CSI Driver Operator's status to change from **Installing operator** to **Operator installed successfully - Ready for use**.
+      review:
+        instructions: |-
+          #### Verify the operator was successfully installed:
+          - You should see a success message stating the operator was successfully installed.
+          - Navigate to the [Operators]{{highlight qs-nav-operators}} section and click on **Installed Operators**. You should see the Secrets Store CSI operator installed.
+          - Navigate to [Workloads]{{highlight qs-nav-workloads}} section and click **Pods**.
+          - Select in the top **Project** dropdown menu, the project **openshift-cluster-csi-drivers**
+          - Verify that there is a running Pod: **secrets-store-csi-driver-operator**
+        failedTaskHelp: This task isn’t verified yet. Try the task again.
+      summary:
+        success: You just installed the Secrets Store CSI Driver Operator!
+        failed: Try the steps again.
+    - title: Deploy the ClusterCSIDriver
+      description: |-
+        ### To deploy the ClusterCSIDriver
+        1. Go to the [Administration]{{highlight qs-nav-administration}} section and click on **CustomResourceDefinitions**
+        2. In the **Search by name** field, type `ClusterCSIDriver` and click on the Custom Resource
+        3. Next to the **Details** tab, select the **Instances** tab.
+        4. Click **Create ClusterCSIDriver**
+        5. Copy the following manifest into the YAML editor field:
+
+        ```yaml
+        apiVersion: operator.openshift.io/v1
+        kind: ClusterCSIDriver
+        metadata:
+            name: secrets-store.csi.k8s.io
+        spec:
+          managementState: Managed
+        ```
+        6. Click the **Create** button
+      review:
+        instructions: |-
+          #### Verify the ClusterCSIDriver is successfully deployed:
+          - Navigate to [Workloads]{{highlight qs-nav-workloads}} section and click **Pods**.
+          - Select in the top **Project** dropdown menu, the project **openshift-cluster-csi-drivers**
+          - Verify that there are running Pods with names starting with: **secrets-store-csi-driver** and **secrets-store-csi-driver-node**
+        failedTaskHelp: Try the task again.
+      summary:
+        success: You've successfully installed all the necessary components for the Secrets Store CSI Driver Operator. Check out the next Quick Start for a simple example of how to use the Custom Resources provided by the operator.
+        failed: Try the steps again.
+  conclusion: "Your secrets store csi driver operator is ready!"
