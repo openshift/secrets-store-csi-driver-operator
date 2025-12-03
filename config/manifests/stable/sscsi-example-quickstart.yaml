@@ -2,6 +2,11 @@ apiVersion: console.openshift.io/v1
 kind: ConsoleQuickStart
 metadata:
   name: secrets-store-csi-example
+  annotations:
+    capability.openshift.io/name: Console
+    include.release.openshift.io/ibm-cloud-managed: "true"
+    include.release.openshift.io/self-managed-high-availability: "true"
+    include.release.openshift.io/single-node-developer: "true"
 spec:
   displayName: Secrets Store CSI Driver Operator Example
   tags:
@@ -34,7 +39,7 @@ spec:
     - title: Navigate to installed Secrets Store CSI Driver operator
       description: |-
         ### To navigate to the installed operator:
-        1. From the **Administrators** perspective, go to the **Installed Operators** from the [Operators]{{highlight qs-nav-operators}} section of the navigation.
+        1. From the **Administrators** perspective, go to the **Installed Operators** from the [Ecosystem]{{highlight qs-nav-ecosystem}} section of the navigation.
         2. In the **Search by name** field, type `Secrets Store CSI`.
         3. Look for **Secrets Store CSI Driver Operator**. If you had completed the prerequisite Quick Start, the tile should appear.
         4. Click on the installed operator
@@ -68,7 +73,7 @@ spec:
           - From the **top side-scrolling menu bar** click **SecretProviderClass** and then click **Create SecretProviderClass**
         2. Fill in the required fields for a `SecretProviderClass` via the form **OR** click the **YAML View** to edit the manifest directly.
           - NOTE: this includes knowing several pieces of information to properly fill in the `spec.provider` and `spec.secretObjects` fields.
-          This will also include, knowing the authentication method for the `provider` and prosessing any necessary credentials,
+          This will also include, knowing the authentication method for the `provider` and possessing any necessary credentials,
           certificates, tokens, etc. necessary to authenticate against the secret management system chosen.
           - In **YAML View** you can check the provided **Samples** on the right hand sidebar for some sample configurations.
         3. When you have filled out the necessary fields or yaml, click the **Create** button to proceed.
