@@ -4,7 +4,7 @@ COPY . .
 RUN make
 RUN go version -m secrets-store-csi-driver-operator
 
-FROM registry.ci.openshift.org/ocp/4.22:base-rhel9
+FROM registry.ci.openshift.org/ocp/4.22:base-rhel9-minimal
 COPY --from=builder /go/src/github.com/openshift/secrets-store-csi-driver-operator/secrets-store-csi-driver-operator /usr/bin/
 ENTRYPOINT ["/usr/bin/secrets-store-csi-driver-operator"]
 LABEL io.k8s.display-name="OpenShift Secrets Store CSI Driver Operator" \
