@@ -74,3 +74,26 @@ test-e2e:
 	hack/e2e.sh
 
 .PHONY: test-e2e
+
+##@ E2E Coverage
+
+.PHONY: build-coverage
+build-coverage: ## Build the operator binary with coverage instrumentation.
+	$(GO) build $(GO_MOD_FLAGS) $(GO_BUILD_FLAGS),e2ecoverage $(GO_LD_FLAGS) \
+		-cover -covermode=atomic -coverpkg=./... \
+		-o secrets-store-csi-driver-operator \
+		./cmd/secrets-store-csi-driver-operator
+
+COVERAGE_IMG ?= $(IMAGE_REGISTRY)/ocp/4.22:secrets-store-csi-driver-operator-e2e-coverage
+
+.PHONY: docker-build-coverage
+docker-build-coverage: ## Build coverage-instrumented Docker image.
+	$(IMAGE_BUILD_BUILDER) $(IMAGE_BUILD_DEFAULT_FLAGS) -t $(COVERAGE_IMG) -f Dockerfile.coverage .
+
+.PHONY: docker-push-coverage
+docker-push-coverage: ## Push coverage Docker image.
+	$(IMAGE_BUILD_BUILDER) push $(COVERAGE_IMG)
+
+.PHONY: e2e-coverage-collect
+e2e-coverage-collect: ## Collect e2e coverage data and optionally upload to Codecov.
+	ARTIFACT_DIR=$${ARTIFACT_DIR:-.} hack/e2e-coverage.sh collect
