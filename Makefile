@@ -79,7 +79,7 @@ test-e2e:
 
 .PHONY: build-coverage
 build-coverage: ## Build the operator binary with coverage instrumentation.
-	$(GO) build $(GO_MOD_FLAGS) $(GO_BUILD_FLAGS),e2ecoverage $(GO_LD_FLAGS) \
+	$(GO) build $(GO_MOD_FLAGS) $(GO_BUILD_FLAGS) $(GO_LD_FLAGS) \
 		-cover -covermode=atomic -coverpkg=./... \
 		-o secrets-store-csi-driver-operator \
 		./cmd/secrets-store-csi-driver-operator

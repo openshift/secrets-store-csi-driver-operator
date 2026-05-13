@@ -87,14 +87,14 @@ collect() {
     fi
     echo "Found operator pod: ${pod}"
 
-    echo "Creating coverage directory inside the pod..."
-    oc exec -n "${NAMESPACE}" "${pod}" -- /bin/sh -c "mkdir -p ${GOCOVERDIR_PATH}" 2>/dev/null || true
+    echo "Sending SIGTERM to flush coverage data (container will restart)..."
+    oc exec -n "${NAMESPACE}" "${pod}" -- /bin/sh -c 'kill -TERM 1' 2>/dev/null || true
 
-    echo "Sending SIGUSR1 to flush coverage data..."
-    oc exec -n "${NAMESPACE}" "${pod}" -- /bin/sh -c 'kill -USR1 1'
-    sleep 3
+    echo "Waiting for container to restart and become ready..."
+    sleep 5
+    oc wait pod "${pod}" -n "${NAMESPACE}" --for=condition=Ready --timeout=120s
 
-    echo "Copying coverage data from the running pod..."
+    echo "Copying coverage data from the restarted container..."
     mkdir -p "${coverage_dir}"
     oc cp "${NAMESPACE}/${pod}:${GOCOVERDIR_PATH}/." "${coverage_dir}"
 
@@ -163,7 +163,7 @@ collect() {
     else
         echo "Warning: No coverage data found in ${coverage_dir}"
         echo "The operator may not have been built with coverage instrumentation,"
-        echo "or the SIGUSR1 flush may not have succeeded."
+        echo "or the process did not exit cleanly (SIGKILL instead of SIGTERM)."
     fi
 
     echo "--- Coverage collection complete ---"
