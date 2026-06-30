@@ -1,0 +1,11 @@
+FROM registry.ci.openshift.org/ocp/builder:rhel-9-golang-1.25-openshift-4.22 AS builder
+WORKDIR /go/src/github.com/openshift/secrets-store-csi-driver-operator
+COPY . .
+RUN make build-coverage
+
+FROM registry.ci.openshift.org/ocp/4.22:base-rhel9
+COPY --from=builder /go/src/github.com/openshift/secrets-store-csi-driver-operator/secrets-store-csi-driver-operator /usr/bin/
+ENV GOCOVERDIR=/tmp/e2e-cover
+ENTRYPOINT ["/bin/sh", "-c", "mkdir -p /tmp/e2e-cover && exec /usr/bin/secrets-store-csi-driver-operator \"$@\"", "--"]
+LABEL io.k8s.display-name="OpenShift Secrets Store CSI Driver Operator" \
+	io.k8s.description="The Secrets Store CSI Driver Operator installs and maintains the Secrets Store CSI Driver on a cluster."
