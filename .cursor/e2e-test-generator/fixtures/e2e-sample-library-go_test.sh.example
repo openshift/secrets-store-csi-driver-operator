@@ -1,0 +1,145 @@
+#!/usr/bin/env bash
+# This file is a STYLE REFERENCE for generated e2e test scripts.
+# Do not run directly; it uses placeholder values.
+#
+# Replace all <PLACEHOLDERS> with actual values discovered from the operator repo:
+#   <operator-namespace>       => e.g. "openshift-cluster-csi-drivers"
+#   <operator-deployment>      => e.g. "secrets-store-csi-driver-operator"
+#   <cr-kind>                  => e.g. "clustercsidriver", "secretproviderclass"
+#   <cr-name>                  => e.g. "secrets-store.csi.k8s.io", "cluster"
+#   <crd-name>                 => e.g. "secretproviderclasses.secrets-store.csi.x-k8s.io"
+#   <operator-label>           => e.g. "app=secrets-store-csi-driver-operator"
+#   <sample-cr-path>           => e.g. "config/samples/sample-cr.yaml"
+
+set -euo pipefail
+
+# ============================================================
+# Configuration (replace with discovered values)
+# ============================================================
+OPERATOR_NAMESPACE="${OPERATOR_NAMESPACE:-<operator-namespace>}"
+OPERATOR_DEPLOYMENT="${OPERATOR_DEPLOYMENT:-<operator-deployment>}"
+OPERATOR_LABEL="${OPERATOR_LABEL:-<operator-label>}"
+TEST_NAMESPACE="e2e-test-$(head -c 4 /dev/urandom | xxd -p)"
+TIMEOUT="${E2E_TEST_POD_TIMEOUT:-120s}"
+
+# ============================================================
+# Helpers
+# ============================================================
+log() { echo "=== $(date '+%H:%M:%S') $*"; }
+fail() { log "FAIL: $*"; exit 1; }
+
+wait_for_pods() {
+    local ns="$1" label="$2" count="${3:-1}"
+    log "Waiting for $count pod(s) with label=$label in namespace=$ns"
+    local deadline=$((SECONDS + ${TIMEOUT%s}))
+    while [ "$SECONDS" -lt "$deadline" ]; do
+        local ready
+        ready=$(oc get pods -n "$ns" -l "$label" --no-headers 2>/dev/null \
+            | grep -c "Running" || true)
+        if [ "$ready" -ge "$count" ]; then
+            log "Found $ready running pod(s)"
+            return 0
+        fi
+        sleep 5
+    done
+    fail "Timed out waiting for pods with label=$label in $ns"
+}
+
+# ============================================================
+# Setup
+# ============================================================
+setup() {
+    log "Creating test namespace: $TEST_NAMESPACE"
+    oc create namespace "$TEST_NAMESPACE" || true
+    oc label namespace "$TEST_NAMESPACE" \
+        security.openshift.io/scc.podSecurityLabelSync=false \
+        pod-security.kubernetes.io/enforce=privileged \
+        pod-security.kubernetes.io/audit=privileged \
+        pod-security.kubernetes.io/warn=privileged \
+        --overwrite
+}
+
+# ============================================================
+# Tests
+# ============================================================
+
+# Diff-suggested: verify operator is installed and running
+test_operator_install() {
+    log "TEST: Operator installation"
+
+    log "Checking CRDs are established"
+    oc wait --for=condition=Established crd/<crd-name> --timeout=60s \
+        || fail "CRD <crd-name> not established"
+
+    log "Checking operator deployment is available"
+    oc wait --for=condition=Available \
+        deployment/"$OPERATOR_DEPLOYMENT" \
+        -n "$OPERATOR_NAMESPACE" \
+        --timeout="$TIMEOUT" \
+        || fail "Operator deployment not available"
+
+    log "Checking operator pods are running"
+    wait_for_pods "$OPERATOR_NAMESPACE" "$OPERATOR_LABEL" 1
+
+    log "PASS: Operator installation"
+}
+
+# Diff-suggested: verify CR lifecycle
+test_cr_lifecycle() {
+    log "TEST: CR lifecycle"
+
+    log "Applying sample CR"
+    oc apply -f <sample-cr-path> -n "$TEST_NAMESPACE" \
+        || fail "Failed to apply sample CR"
+
+    log "Waiting for CR to be ready"
+    oc wait --for=condition=Ready \
+        <cr-kind>/<cr-name> \
+        -n "$TEST_NAMESPACE" \
+        --timeout="$TIMEOUT" \
+        || fail "CR did not reach Ready condition"
+
+    log "Verifying CR status"
+    local status
+    status=$(oc get <cr-kind>/<cr-name> -n "$TEST_NAMESPACE" -o jsonpath='{.status}')
+    [ -n "$status" ] || fail "CR has no status"
+
+    log "PASS: CR lifecycle"
+}
+
+# Diff-suggested: verify operator recovery
+test_operator_recovery() {
+    log "TEST: Operator recovery"
+
+    log "Force-deleting operator pod(s)"
+    oc delete pod -n "$OPERATOR_NAMESPACE" -l "$OPERATOR_LABEL" --force --grace-period=0
+
+    log "Waiting for operator deployment to recover"
+    oc wait --for=condition=Available \
+        deployment/"$OPERATOR_DEPLOYMENT" \
+        -n "$OPERATOR_NAMESPACE" \
+        --timeout="$TIMEOUT" \
+        || fail "Operator did not recover"
+
+    wait_for_pods "$OPERATOR_NAMESPACE" "$OPERATOR_LABEL" 1
+
+    log "PASS: Operator recovery"
+}
+
+# ============================================================
+# Cleanup
+# ============================================================
+cleanup() {
+    log "Cleaning up test namespace: $TEST_NAMESPACE"
+    oc delete namespace "$TEST_NAMESPACE" --ignore-not-found --wait=false
+}
+
+# ============================================================
+# Main
+# ============================================================
+trap cleanup EXIT
+setup
+test_operator_install
+test_cr_lifecycle
+test_operator_recovery
+log "All e2e tests passed"

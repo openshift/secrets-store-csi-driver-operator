@@ -1,0 +1,23 @@
+# Eval case schema — constitution stage
+
+stage: constitution
+template: eval-generation/output-refined-templates/constitution-template.md
+artifact: constitution.md
+output_eval_file: eval-generation/output-evals/constitution/constitution_eval.yaml
+
+required_fields:
+  - id
+  - round
+  - stage
+  - source_issue_ids
+  - input_refs
+  - assertions
+  - scoring
+  - pass_threshold
+
+assertion_types:
+  - must_cite_repo_evidence
+  - must_set_agent_routing_mode
+  - must_align_with_agents_md
+  - must_not_duplicate_repo_assessment
+  - must_mention

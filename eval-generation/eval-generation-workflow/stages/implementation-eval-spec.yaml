@@ -1,0 +1,22 @@
+# Eval case schema — implementation stage
+
+stage: implementation
+template: eval-generation/output-refined-templates/implementation-report-template.md
+artifact: code changes + implementation-report.md
+output_eval_file: eval-generation/output-evals/implementation/implementation_eval.yaml
+
+required_fields:
+  - id
+  - round
+  - stage
+  - source_issue_ids
+  - input_refs
+  - assertions
+  - scoring
+  - pass_threshold
+
+assertion_types:
+  - must_mention
+  - must_verify_build
+  - must_run_tests
+  - must_follow_constitution

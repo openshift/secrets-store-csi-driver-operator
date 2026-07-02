@@ -1,0 +1,143 @@
+// This file is a STYLE REFERENCE for generated e2e test code.
+// Do not run directly; it uses placeholder types and assumes a suite exists.
+// Copy patterns (Describe/Context/It, By, utils.*, k8sClient, testCtx) into the target repo.
+//
+// Replace all <PLACEHOLDERS> with actual values discovered from the operator repo:
+//   <operator-api-import>  => e.g. "github.com/openshift/cert-manager-operator/api/v1alpha1"
+//   <OperatorCR>           => e.g. CertManager, ExternalSecret, ZeroTrustWorkloadIdentityManager
+//   <operator-namespace>   => e.g. "cert-manager-operator", "external-secrets-operator"
+//   <cr-name>              => e.g. "cluster", "default"
+
+package e2e
+
+import (
+	"context"
+	"time"
+
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
+
+	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	// Replace with actual operator API import:
+	// operatorv1alpha1 "<operator-api-import>"
+	// Replace with actual e2e utils import:
+	// "path/to/test/e2e/utils"
+)
+
+var _ = Describe("Operator E2E", Ordered, func() {
+	var testCtx context.Context
+
+	BeforeEach(func() {
+		var cancel context.CancelFunc
+		testCtx, cancel = context.WithTimeout(context.Background(), 5*time.Minute)
+		DeferCleanup(cancel)
+	})
+
+	// --- Operator Installation ---
+	Context("Operator installation", func() {
+		// Diff-suggested: verify operator deployment is healthy
+		It("should have the operator deployment available", func() {
+			By("Checking operator deployment is available")
+			Eventually(func(g Gomega) {
+				dep := &appsv1.Deployment{}
+				err := k8sClient.Get(testCtx, client.ObjectKey{
+					Name:      "<operator-deployment-name>",
+					Namespace: "<operator-namespace>",
+				}, dep)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(dep.Status.AvailableReplicas).To(BeNumerically(">=", 1),
+					"operator deployment should have at least 1 available replica")
+			}, 2*time.Minute, 5*time.Second).Should(Succeed())
+		})
+	})
+
+	// --- CR Lifecycle ---
+	Context("CR lifecycle", func() {
+		// Diff-suggested: verify CR creation and conditions
+		It("should create the CR and reach Ready condition", func() {
+			By("Creating the CR")
+			// cr := &operatorv1alpha1.<OperatorCR>{
+			//     ObjectMeta: metav1.ObjectMeta{
+			//         Name:      "<cr-name>",
+			//         Namespace: "<operator-namespace>",  // omit for cluster-scoped
+			//     },
+			//     Spec: operatorv1alpha1.<OperatorCR>Spec{
+			//         // Fill required spec fields from discovered types
+			//     },
+			// }
+			// Expect(k8sClient.Create(testCtx, cr)).To(Succeed())
+
+			By("Waiting for CR to be Ready")
+			// Eventually(func(g Gomega) {
+			//     fetched := &operatorv1alpha1.<OperatorCR>{}
+			//     err := k8sClient.Get(testCtx, client.ObjectKeyFromObject(cr), fetched)
+			//     g.Expect(err).NotTo(HaveOccurred())
+			//     // Check conditions - adapt to actual condition types:
+			//     for _, c := range fetched.Status.Conditions {
+			//         if c.Type == "Ready" {
+			//             g.Expect(c.Status).To(Equal(metav1.ConditionTrue))
+			//         }
+			//     }
+			// }, 3*time.Minute, 5*time.Second).Should(Succeed())
+			_ = metav1.Now() // placeholder to avoid unused import
+		})
+	})
+
+	// --- Operator Recovery ---
+	Context("Operator recovery", func() {
+		// Diff-suggested: verify operator recovers from pod deletion
+		It("should recover after operator pod deletion", func() {
+			By("Listing operator pods")
+			pods := &corev1.PodList{}
+			err := k8sClient.List(testCtx, pods,
+				client.InNamespace("<operator-namespace>"),
+				client.MatchingLabels{"<label-key>": "<label-value>"},
+			)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(pods.Items).NotTo(BeEmpty(), "should find operator pods")
+
+			By("Deleting operator pod(s)")
+			for i := range pods.Items {
+				Expect(k8sClient.Delete(testCtx, &pods.Items[i])).To(Succeed())
+			}
+
+			By("Waiting for operator deployment to recover")
+			Eventually(func(g Gomega) {
+				dep := &appsv1.Deployment{}
+				err := k8sClient.Get(testCtx, client.ObjectKey{
+					Name:      "<operator-deployment-name>",
+					Namespace: "<operator-namespace>",
+				}, dep)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(dep.Status.AvailableReplicas).To(BeNumerically(">=", 1))
+			}, 2*time.Minute, 5*time.Second).Should(Succeed())
+		})
+	})
+
+	// --- CR Field Propagation ---
+	Context("CR configuration propagation", func() {
+		// Diff-suggested: verify spec field changes propagate to workloads
+		It("should propagate resource limits to backing workload", func() {
+			By("Patching CR with resource limits")
+			// Use k8sClient.Patch or k8sClient.Update to set resources on the CR
+
+			By("Verifying backing workload has updated resources")
+			// Eventually check the Deployment/StatefulSet/DaemonSet containers
+			// for the expected resource limits/requests
+		})
+	})
+
+	// --- OperatorCondition Upgradeable ---
+	Context("OperatorCondition", func() {
+		// Diff-suggested: verify Upgradeable condition
+		It("should report Upgradeable True when healthy", func() {
+			By("Getting OperatorCondition for the operator")
+			// Look up the OperatorCondition by label or name convention
+			// Verify Upgradeable condition status is True
+		})
+	})
+})

@@ -1,0 +1,80 @@
+# Maps openspec-agile-workflow artifact IDs → stage eval files (forward /opsx-continue gate)
+#
+# Generation templates: templates/ (via openspec instructions)
+# Eval rubrics: evals/<stage>_eval.yaml
+# Do NOT refine templates during forward workflow — refine the change artifact only.
+
+schema_templates_dir: templates/
+
+artifacts:
+  validation:
+    stage: validation
+    generates: validation.json
+    schema_template: validation.md
+    stage_eval_file: null
+    eval_spec: null
+    gate: rubric_only
+    note: Score against validation.md rubric; no stage *_eval.yaml
+
+  specs:
+    stage: specs
+    generates: specs.md
+    schema_template: spec.md
+    stage_eval_file: null
+    eval_spec: null
+    gate: skip
+    note: No stage eval file; user approval only after generation
+
+  repo-assessment:
+    stage: repo-assessment
+    generates: repo-assessment.md
+    schema_template: repo-assessment.md
+    stage_eval_file: evals/repo-assessment_eval.yaml
+    eval_spec: eval-generation/eval-generation-workflow/stages/repo-assessment-eval-spec.yaml
+    gate: stage_evals
+
+  # constitution is no longer a generated artifact — it is an INPUT.
+  # See schema constitution_md for lookup order. Template retained at templates/constitution-template.md
+  # for reference and fallback generation.
+
+  plan:
+    stage: plan
+    generates: plan.md
+    schema_template: plan.md
+    stage_eval_file: evals/plan_eval.yaml
+    eval_spec: eval-generation/eval-generation-workflow/stages/plan-eval-spec.yaml
+    gate: stage_evals
+
+  tasks:
+    stage: tasks
+    generates: tasks.md
+    schema_template: tasks.md
+    stage_eval_file: evals/tasks_eval.yaml
+    eval_spec: eval-generation/eval-generation-workflow/stages/tasks-eval-spec.yaml
+    gate: stage_evals
+
+  implementation:
+    stage: implementation
+    stage_eval_file: evals/implementation_eval.yaml
+    eval_spec: eval-generation/eval-generation-workflow/stages/implementation-eval-spec.yaml
+    gate: stage_evals
+    note: Score implementation task reports during code-generation eval gate
+
+  implementation-report:
+    gate: skip
+
+  adrs:
+    gate: skip
+
+eval_results_dir: openspec/changes/<change-name>/eval-results/
+
+# Evaluation reports — generated alongside each artifact after eval scoring
+evaluation_reports:
+  enabled: true
+  output_dir: openspec/changes/<change-name>/
+  naming: "<artifact-id>_evaluation_report.md"
+  description: >-
+    After eval scoring (or rubric check), generate a structured evaluation report
+    that presents: eval pass/fail summary, gap analysis against input artifacts
+    and agents.md, and quality assessment. Present to user alongside the artifact
+    for approval.

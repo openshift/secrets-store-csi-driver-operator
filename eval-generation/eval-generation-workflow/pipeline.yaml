@@ -1,0 +1,153 @@
+name: openspec-eval-pipeline
+version: 4
+
+description: >-
+  Single-command retrospective loop: Epic Bug Analysis → Eval Generation →
+  cumulative baseline. One feature bundle per /eval-loop invocation.
+
+command: /eval-loop
+
+# Sources (read-only — never modified by eval loop)
+schema_templates_dir: openspec/schemas/openspec-agile-workflow/templates
+agents_md_source: openspec/inputs/agents.md
+
+# Working copy + output (seeded from sources on round 1, patched in place each round)
+refined_templates_dir: eval-generation/output-refined-templates/
+
+# Gaps — per-template and agents.md gap reports
+template_gaps_dir: eval-generation/eval-generation-workflow/template-gaps/
+
+phases:
+  - id: validate-inputs
+    reads:
+      - eval-generation/input/feature-bundle.yaml
+    rule: Stop if placeholders (PASTE_) are still unfilled
+
+  - id: load-baseline
+    reads:
+      - eval-generation/eval-generation-workflow/round-state.yaml
+      - eval-generation/output-evals/<stage>/<stage>_eval.yaml
+      - eval-generation/output-refined-templates/
+      - eval-generation/eval-generation-workflow/template-gaps/
+    when: round >= 1
+    rule: Round 1 may have empty baseline; round 2+ must read prior evals, refined templates, and gaps
+
+  - id: epic-bug-analysis
+    name: Epic Bug Analysis
+    system_prompt: eval-generation/eval-generation-workflow/epic-bug-analysis/SYSTEM_PROMPT.md
+    reads:
+      - eval-generation/input/feature-bundle.yaml
+      - eval-generation/output-refined-templates/
+    writes:
+      - eval-generation/eval-generation-workflow/outputs/epic-bug-analysis/pattern-analysis.md
+      - eval-generation/eval-generation-workflow/outputs/epic-bug-analysis/rca-summary.md
+      - eval-generation/eval-generation-workflow/outputs/epic-bug-analysis/issue-taxonomy.json
+
+  - id: eval-generation
+    name: Eval Generation
+    system_prompt: eval-generation/eval-generation-workflow/generation-phase/SYSTEM_PROMPT.md
+    reads:
+      - eval-generation/eval-generation-workflow/outputs/epic-bug-analysis/*
+      - eval-generation/eval-generation-workflow/generation-phase/template-inventory.yaml
+      - eval-generation/output-refined-templates/
+      - eval-generation/output-evals/<stage>/<stage>_eval.yaml
+      - eval-generation/eval-generation-workflow/template-gaps/
+    steps:
+      - id: seed-refined-templates
+        rule: >-
+          If eval-generation/output-refined-templates/ is empty or missing key files,
+          copy templates from schema_templates_dir and copy agents.md from openspec/inputs/agents.md.
+          Never write eval refinements to openspec/schemas/ or openspec/inputs/.
+      - id: inventory-templates
+        reads:
+          - eval-generation/output-refined-templates/
+          - eval-generation/eval-generation-workflow/generation-phase/template-inventory.yaml
+      - id: identify-gaps
+        rule: >-
+          Compare bug patterns and RCA findings against each template and agents.md.
+          Write one gap file per template/agents.md to eval-generation/eval-generation-workflow/template-gaps/.
+          Each gap file documents what is missing, severity (patchable, eval-only, deferred).
+        writes:
+          - eval-generation/eval-generation-workflow/template-gaps/validation-gaps.md
+          - eval-generation/eval-generation-workflow/template-gaps/spec-gaps.md
+          - eval-generation/eval-generation-workflow/template-gaps/repo-assessment-gaps.md
+          - eval-generation/eval-generation-workflow/template-gaps/constitution-gaps.md
+          - eval-generation/eval-generation-workflow/template-gaps/plan-gaps.md
+          - eval-generation/eval-generation-workflow/template-gaps/tasks-gaps.md
+          - eval-generation/eval-generation-workflow/template-gaps/code-generation-gaps.md
+          - eval-generation/eval-generation-workflow/template-gaps/design-bundle-gaps.md
+          - eval-generation/eval-generation-workflow/template-gaps/implementation-report-gaps.md
+          - eval-generation/eval-generation-workflow/template-gaps/implementation-task-report-gaps.md
+          - eval-generation/eval-generation-workflow/template-gaps/adrs-gaps.md
+          - eval-generation/eval-generation-workflow/template-gaps/agents-gaps.md
+      - id: apply-template-refinements
+        rule: >-
+          For every gap marked patchable, patch the corresponding file under
+          eval-generation/output-refined-templates/ IN PLACE.
+          Also refine output-refined-templates/agents.md with operator-specific learnings.
+          Save .patch files to outputs/eval-generation/patches/.
+        writes:
+          - eval-generation/output-refined-templates/*.md
+          - eval-generation/output-refined-templates/agents.md
+          - eval-generation/eval-generation-workflow/outputs/eval-generation/patches/*.patch
+      - id: create-eval-cases
+        rule: >-
+          Merge all eval cases per stage into ONE file:
+          eval-generation/output-evals/<stage>/<stage>_eval.yaml
+          Then sync copies to openspec/schemas/openspec-agile-workflow/evals/<stage>_eval.yaml
+          with template: templates/<name>-template.md for forward /opsx-continue.
+        writes:
+          - eval-generation/output-evals/repo-assessment/repo-assessment_eval.yaml
+          - eval-generation/output-evals/constitution/constitution_eval.yaml
+          - eval-generation/output-evals/plan/plan_eval.yaml
+          - eval-generation/output-evals/tasks/tasks_eval.yaml
+          - eval-generation/output-evals/implementation/implementation_eval.yaml
+          - eval-generation/output-evals/code-generation/code-generation_eval.yaml
+          - openspec/schemas/openspec-agile-workflow/evals/repo-assessment_eval.yaml
+          - openspec/schemas/openspec-agile-workflow/evals/constitution_eval.yaml
+          - openspec/schemas/openspec-agile-workflow/evals/plan_eval.yaml
+          - openspec/schemas/openspec-agile-workflow/evals/tasks_eval.yaml
+          - openspec/schemas/openspec-agile-workflow/evals/implementation_eval.yaml
+          - openspec/schemas/openspec-agile-workflow/evals/code-generation_eval.yaml
+      - id: create-code-generation-evals
+        rule: >-
+          Derive code-generation evals from PR diffs, bug postmortems, and
+          issue-taxonomy.json patterns. Tag each case with oape_command.
+          Rubric: eval-generation/eval-generation-workflow/stages/code-generation-eval-spec.yaml
+        reads:
+          - eval-generation/eval-generation-workflow/outputs/epic-bug-analysis/issue-taxonomy.json
+          - eval-generation/input/feature-bundle.yaml
+          - eval-generation/eval-generation-workflow/stages/code-generation-eval-spec.yaml
+        writes:
+          - eval-generation/output-evals/code-generation/code-generation_eval.yaml
+          - openspec/schemas/openspec-agile-workflow/evals/code-generation_eval.yaml
+      - id: update-round
+        writes:
+          - eval-generation/eval-generation-workflow/rounds/round-<N>/
+          - eval-generation/eval-generation-workflow/round-state.yaml
+
+eval_stages:
+  - repo-assessment
+  - constitution
+  - plan
+  - tasks
+  - implementation
+  - code-generation
+
+stage_eval_files:
+  output: eval-generation/output-evals/<stage>/<stage>_eval.yaml
+  forward_workflow: openspec/schemas/openspec-agile-workflow/evals/<stage>_eval.yaml
+
+feedback_loop:
+  description: >-
+    After each /eval-loop:
+    - output-evals/ accumulates eval cases (input for next round)
+    - template-gaps/ shows what's missing per template and agents.md
+    - output-refined-templates/ has the patched templates (working copy, accumulates across rounds)
+    The user should review output-refined-templates/ and apply relevant changes
+    back to openspec/inputs/agents.md and openspec/schemas/.../templates/.
+  cumulative:
+    - eval-generation/output-evals/<stage>/<stage>_eval.yaml
+    - eval-generation/output-refined-templates/
+  per_round:
+    - eval-generation/eval-generation-workflow/template-gaps/

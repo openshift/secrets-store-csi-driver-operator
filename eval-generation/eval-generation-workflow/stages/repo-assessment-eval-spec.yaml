@@ -1,0 +1,22 @@
+# Eval case schema — repo-assessment stage
+
+stage: repo-assessment
+template: eval-generation/output-refined-templates/repo-assessment-template.md
+artifact: repo-assessment.md
+output_eval_file: eval-generation/output-evals/repo-assessment/repo-assessment_eval.yaml
+
+required_fields:
+  - id
+  - round
+  - stage
+  - source_issue_ids
+  - input_refs
+  - assertions
+  - scoring
+  - pass_threshold
+
+assertion_types:
+  - must_mention
+  - must_cover_section
+  - must_cite_repo_evidence
+  - must_identify_pattern

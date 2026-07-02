@@ -1,0 +1,23 @@
+# Eval case schema — tasks stage
+
+stage: tasks
+template: eval-generation/output-refined-templates/tasks-template.md
+artifact: tasks.md
+output_eval_file: eval-generation/output-evals/tasks/tasks_eval.yaml
+
+required_fields:
+  - id
+  - round
+  - stage
+  - source_issue_ids
+  - input_refs
+  - assertions
+  - scoring
+  - pass_threshold
+
+assertion_types:
+  - must_mention
+  - must_cover_all_spec_requirements
+  - must_assign_agent
+  - must_define_acceptance_criteria
+  - must_respect_dag

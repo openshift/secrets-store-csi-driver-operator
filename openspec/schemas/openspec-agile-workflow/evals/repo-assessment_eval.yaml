@@ -1,0 +1,3 @@
+stage: repo-assessment
+template: templates/repo-assessment-template.md
+evals: []

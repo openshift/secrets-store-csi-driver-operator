@@ -1,0 +1,41 @@
+# Feature Bundle Input — Provide all links and content for one eval-loop round
+#
+# Replace ALL placeholder values below before running /eval-loop.
+# The eval pipeline will stop if any PASTE_ placeholders remain.
+
+feature_name: PASTE_FEATURE_NAME_HERE
+epic_key: PASTE_EPIC_KEY_HERE
+target_repo: PASTE_TARGET_REPO_URL_HERE
+
+# --- Required Inputs ---
+
+enhancement_proposal: |
+  PASTE_EP_ARD_CONTENT_HERE
+  <!-- Full Enhancement Proposal / ARD content for this feature bundle -->
+
+jira_epic: |
+  PASTE_JIRA_EPIC_EXPORT_HERE
+  <!-- Jira epic export (summary, description, acceptance criteria) -->
+
+repo_state: |
+  PASTE_REPO_STATE_HERE
+  <!-- Pre-feature repo state: commit SHA, branch, key file listing, architecture notes -->
+
+user_stories: |
+  PASTE_USER_STORIES_HERE
+  <!-- User stories linked to the epic (ID, title, description, acceptance criteria) -->
+
+repo_prs: |
+  PASTE_PR_LINKS_AND_DIFFS_HERE
+  <!-- PR links and diffs for the completed feature implementation -->
+
+# --- Optional: Bugs ---
+# List bugs discovered during/after the feature implementation.
+# These drive code-generation evals and template gap analysis.
+
+bugs:
+  # - key: BUG-001
+  #   summary: "Brief description"
+  #   root_cause: "What went wrong"
+  #   fix_pr: "https://github.com/..."
+  #   affected_stage: "implementation"  # repo-assessment | constitution | plan | tasks | implementation | code-generation

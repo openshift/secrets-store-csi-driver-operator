@@ -1,0 +1,76 @@
+# Template inventory — Eval Generation inputs
+# READ/WRITE: eval-generation/output-refined-templates/ only (NOT schemas/)
+
+refined_templates_dir: eval-generation/output-refined-templates/
+schema_templates_dir_readonly: openspec/schemas/openspec-agile-workflow/templates/
+
+agents_md:
+  source: openspec/inputs/agents.md
+  working_copy: eval-generation/output-refined-templates/agents.md
+  gaps: eval-generation/eval-generation-workflow/template-gaps/agents-gaps.md
+
+spec_understanding:
+  - id: validation
+    file: validation-template.md
+    artifact: validation.json
+    note: Refine in output-refined-templates/ — spec-stage eval; not duplicated under output-evals/
+  - id: specs
+    file: spec-template.md
+    artifact: specs.md
+    note: Spec authoring template; gaps inform validation refinement
+
+repo_understanding:
+  - id: repo-assessment
+    file: repo-assessment-template.md
+    artifact: repo-assessment.md
+    eval_stage: repo-assessment
+  - id: constitution
+    file: constitution-template.md
+    artifact: constitution.md
+    eval_stage: constitution
+
+planning:
+  - id: plan
+    file: plan-template.md
+    artifact: plan.md
+    eval_stage: plan
+
+task_creation:
+  - id: tasks
+    file: tasks-template.md
+    artifact: tasks.md
+    eval_stage: tasks
+  - id: tasks-skeleton
+    file: tasks-modes/skeleton-template.md
+  - id: tasks-payloads
+    file: tasks-modes/payloads-template.md
+  - id: tasks-orchestration
+    file: tasks-modes/orchestration-template.md
+  - id: tasks-single
+    file: tasks-modes/single-template.md
+  - id: tasks-impact-assessment
+    file: tasks-modes/impact_assessment-template.md
+  - id: tasks-payload-revision
+    file: tasks-modes/payload_revision-template.md
+
+implementation:
+  - id: implementation
+    artifact: code + task reports
+    eval_stage: implementation
+  - id: implementation-report
+    file: implementation-report-template.md
+  - id: adrs
+    file: adrs-template.md
+
+code_generation:
+  description: >-
+    Per-task code evals for /opsx-apply — not a markdown artifact stage.
+    Cases tagged with oape_command; no template to refine.
+  eval_stage: code-generation
+  oape_commands:
+    - api-generate
+    - api-generate-tests
+    - api-implement
+    - e2e-generate
+    - manual
+    - any

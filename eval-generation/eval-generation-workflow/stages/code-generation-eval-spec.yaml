@@ -1,0 +1,31 @@
+# Eval case schema — code-generation stage
+
+stage: code-generation
+artifact: fork code per OAPE task
+output_eval_file: eval-generation/output-evals/code-generation/code-generation_eval.yaml
+
+required_fields:
+  - id
+  - round
+  - stage
+  - oape_command
+  - source_issue_ids
+  - input_refs
+  - assertions
+  - scoring
+  - pass_threshold
+
+assertion_types:
+  - must_compile
+  - must_pass_tests
+  - must_follow_pattern
+  - must_not_modify_forbidden_files
+  - must_match_task_payload
+
+oape_commands:
+  - api-generate
+  - api-generate-tests
+  - api-implement
+  - e2e-generate
+  - manual
+  - any

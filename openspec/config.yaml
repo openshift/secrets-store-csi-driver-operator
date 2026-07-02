@@ -1,0 +1,53 @@
+schema: openspec-agile-workflow
+
+context: |
+  GS Spec Kit agile workflow — gated spec-driven development.
+  Stages: validation → specs → repo-assessment + constitution → plan → tasks → implementation.
+  Primary input at /opsx:new: Jira ticket key ONLY (stored in inputs/jira.yaml).
+  Target GitHub repository: NOT required at /opsx:new — required before repo-assessment
+  artifact (unless working-folder mode — see schema working_folder_repo).
+  Optional anytime: AGENTS.md from the target repo.
+  Working-folder mode: when the user directs using the current checkout as the repo,
+  set use_working_folder_as_repo: true in inputs/jira.yaml — skip fork URL and draft PR.
+  Fork URL: NOT required until Implementation (/opsx:apply) in default mode — stored as
+  fork_repo_url in inputs/jira.yaml.
+  Approve each artifact before proceeding to the next stage. Implementation uses
+  task-by-task execution with per-task user approval (/opsx-apply), then pushes a
+  draft PR to the user's fork.
+
+flags:
+  max_feedback_rounds: 3          # Max user rejection + refinement loops per artifact before halting (USER_FEEDBACK_PROMPT.md)
+  exit_on_all_tasks_complete: true # Exit implementation stage automatically when all tasks in tasks.md are marked [x]
+  generate_evaluation_reports: true # Generate <artifact>_evaluation_report.md alongside each artifact
+ 
+rules:
+  validation:
+    - "Read jira_key from inputs/jira.yaml; use inputs/jira-spec.md as spec source"
+    - "Obtain Jira ticket content via Jira MCP or ask the user to paste into inputs/jira-spec.md"
+    - "Score completeness (60%) and quality (40%); do not invent requirements"
+    - "Emit validation.json matching the validation.md template schema"
+  specs:
+    - "Derive from the same Jira ticket referenced in inputs/jira.yaml"
+    - "No implementation details; max 3 [NEEDS CLARIFICATION] markers"
+    - "User stories with Given/When/Then; FR-xxx and SC-xxx identifiers"
+    - "If user rejects specs.md at approval, exit the workflow (no refinement loop; see schema exit_on_reject.specs)"
+  repo-assessment:
+    - "Before creating repo-assessment.md, ensure target_repo is set OR working-folder mode is active (see schema working_folder_repo and target_repo)"
+    - "Fact-based inventory only; cite repo evidence for every target file"
+  constitution:
+    - "INPUT not artifact — resolve via lookup order (target repo, then change inputs/, then schema inputs/)"
+    - "If not found, generate once using templates/constitution-template.md and save to change inputs/"
+  plan:
+    - "All sections §0–§8; each phase uses Goal, Dependencies, Target files, Verification hooks"
+  tasks:
+    - "Use §0–§5 structure; prefer multipass (skeleton → payloads → orchestration) for large backlogs"
+    - "Task IDs: T<n>_<m>; pair implementation tasks with verification when constitution requires"
+  implementation:
+    - "Follow the implementation artifact instruction in schema.yaml exactly"
+    - "Working-folder mode: use project cwd; no fork, no draft PR (schema working_folder_repo)"
+    - "Default mode: Ask user for fork_repo_url at stage start; persist to inputs/jira.yaml"
+    - "Clone fork, create feature branch, apply FILE OPERATIONS to fork working copy (not upstream)"
+    - "Task-by-task execution with per-task user approval gate (one OAPE command per task)"
+    - "Execute unit test block per task (real go test); controller tasks must co-generate _test.go files following agents.md exemplar"
+    - "After all phases: commit, push feature branch, open draft PR on fork (head = feature branch, base = master/main)"
+    - "Close with implementation-report.md, optional adrs.md"

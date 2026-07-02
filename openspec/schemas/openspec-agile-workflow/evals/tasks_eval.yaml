@@ -1,0 +1,3 @@
+stage: tasks
+template: templates/tasks-template.md
+evals: []

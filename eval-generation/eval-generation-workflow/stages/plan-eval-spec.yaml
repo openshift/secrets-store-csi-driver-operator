@@ -1,0 +1,22 @@
+# Eval case schema — plan stage
+
+stage: plan
+template: eval-generation/output-refined-templates/plan-template.md
+artifact: plan.md
+output_eval_file: eval-generation/output-evals/plan/plan_eval.yaml
+
+required_fields:
+  - id
+  - round
+  - stage
+  - source_issue_ids
+  - input_refs
+  - assertions
+  - scoring
+  - pass_threshold
+
+assertion_types:
+  - must_mention
+  - must_reference_spec_ids
+  - must_cover_phase
+  - must_align_with_constitution
