@@ -1,0 +1,38 @@
+--- /Users/ckyal/go/src/github.com/chiragkyal/secrets-store-csi-driver-operator/openspec/schemas/openspec-agile-workflow/templates/spec-template.md	2026-07-02 17:47:50
++++ /Users/ckyal/go/src/github.com/chiragkyal/secrets-store-csi-driver-operator/eval-generation/output-refined-templates/spec-template.md	2026-07-02 18:38:01
+@@ -187,6 +187,30 @@
+ - **SC-003**: [Operational metric, e.g., "Disabling the feature removes managed resources without affecting unrelated operator functions"]
+ - **SC-004**: [Upgrade metric, e.g., "Existing clusters upgrade without manual intervention when prerequisites are met"]
+ 
++## OLM Bundle Placement *(include if feature adds resources to OLM bundle)*
++
++<!--
++  If this feature adds resources to the OLM bundle (config/manifests/stable/), explicitly decide
++  the placement for EACH new resource. This prevents mid-implementation design pivots.
++  
++  CIRCULAR DEPENDENCY CHECK: Install-type QuickStarts (guides that explain how to install the
++  operator) MUST NOT be placed in the OLM bundle — they only appear after installation completes,
++  creating a circular dependency. Place install guides in demo/ only.
++-->
++
++| Resource | Location | Deployment profiles | Circular dependency risk? |
++|---|---|---|---|
++| [ResourceName] | `config/manifests/stable/` (bundle) | IBM Managed, HA, SNO | No |
++| [InstallGuide] | `demo/` only | N/A (manual apply) | Yes — install guides must NOT be in bundle |
++
++**Required OLM bundle annotations** (for each resource in `config/manifests/stable/`):
++```yaml
++capability.openshift.io/name: "<Console|Storage|...>"
++include.release.openshift.io/ibm-cloud-managed: "true"
++include.release.openshift.io/self-managed-high-availability: "true"
++include.release.openshift.io/single-node-developer: "true"
++```
++
+ ## Assumptions
+ 
+ <!--
+@@ -199,3 +223,4 @@
+ - **A-002**: [Scope boundary, e.g., "Hypershift-specific behavior is out of scope unless the ticket explicitly requires it"]
+ - **A-003**: [Environment assumption, e.g., "Target OpenShift version supports the operator's existing feature-gate mechanism"]
+ - **A-004**: [Dependency assumption, e.g., "Core platform components are already installed and healthy before this feature is enabled"]
++- **A-OLM-001** *(add when bundle resources are involved)*: The following resources enter the OLM bundle: [list]. The following remain in demo/ only: [list]. Rationale: [reason].

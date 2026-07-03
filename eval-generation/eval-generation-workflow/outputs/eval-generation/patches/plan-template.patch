@@ -1,0 +1,29 @@
+--- /Users/ckyal/go/src/github.com/chiragkyal/secrets-store-csi-driver-operator/openspec/schemas/openspec-agile-workflow/templates/plan-template.md	2026-07-02 17:47:50
++++ /Users/ckyal/go/src/github.com/chiragkyal/secrets-store-csi-driver-operator/eval-generation/output-refined-templates/plan-template.md	2026-07-02 18:38:18
+@@ -85,6 +85,7 @@
+ - **Target files:** (only from repo_assessment.md or marked UNVERIFIED + discovery step)
+ - **Required capabilities:** (from agents.md OR provisional taxonomy; mark provisional if needed)
+ - **Verification hooks:** (unit/integration/e2e/manual; name suites/areas if known from inputs)
++- **Platform pattern check** *(for phases adding network policies, RBAC, TLS, SCC overrides)*: Survey existing platform operator patterns (CSO, CNO, CCO) before designing custom resources. Document what CSO/CNO already manages and what must be added as operator-specific resources.
+ 
+ ### N/A policy
+ Any subsection that does not apply MUST be `N/A` with a one-line reason.
+@@ -166,7 +167,18 @@
+ 
+ #### 3.5 Packaging / OLM (if applicable)
+ OLM/CSV ownership rules, bundle layout, image references, feature gates/TechPreview markers.
++
++**Bundle placement decision matrix** (required for any feature adding resources to the OLM bundle):
++
++| Resource | Location (bundle vs demo) | Required annotations | Circular dependency risk? |
++|---|---|---|---|
++| [ResourceName] | `config/manifests/stable/` | capability.openshift.io/name + include.release.openshift.io/* | No |
++| [InstallGuide] | `demo/` only | N/A | Yes — exclude from bundle |
+ 
++Include a row per new resource. If a resource's presence in the bundle creates a circular
++dependency (e.g., install QuickStarts that describe installing the operator via OLM), mark it
++explicitly and exclude from the bundle.
++
+ ### § 4. Dependencies & sequencing graph
+ 
+ - **Critical path summary:** ordered list of logical sequencing constraints.

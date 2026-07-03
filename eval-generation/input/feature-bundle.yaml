@@ -1,41 +1,346 @@
-# Feature Bundle Input — Provide all links and content for one eval-loop round
+# Feature Bundle — SSCSI-235: OpenShift Console QuickStart Guides for Secrets Store CSI Driver
 #
-# Replace ALL placeholder values below before running /eval-loop.
-# The eval pipeline will stop if any PASTE_ placeholders remain.
+# Primary PRs:
+#   PR #94 — SSCSI-235: Add OpenShift Console QuickStart guides (merged 2025-11-24)
+#   PR #95 — SSCSI-235: Move quickstart guides to OLM bundle (merged 2025-12-03)
+# Author: chiragkyal
+#
+# Supplementary PRs (same repo, same cycle — referenced for pattern learning):
+#   Network policies: commits cb3b22f2, 8974dbc4, 58320aaa, 796a110a (May–Jun 2025)
+#   TLS cert:        PR #106 — STOR-2884 (merged 2026-03-23)
 
-feature_name: PASTE_FEATURE_NAME_HERE
-epic_key: PASTE_EPIC_KEY_HERE
-target_repo: PASTE_TARGET_REPO_URL_HERE
+feature_name: "OpenShift Console QuickStart Guides for Secrets Store CSI Driver"
+epic_key: SSCSI-235
+target_repo: https://github.com/openshift/secrets-store-csi-driver-operator
 
 # --- Required Inputs ---
 
 enhancement_proposal: |
-  PASTE_EP_ARD_CONTENT_HERE
-  <!-- Full Enhancement Proposal / ARD content for this feature bundle -->
+  ## Title
+  Add interactive OpenShift Console QuickStart guides fo pr Secrets Store CSI Driver Operator
+
+  ## Problem
+  Cluster administrators and developers have no guided, in-console experience for getting
+  started with the Secrets Store CSI Driver Operator. The only documentation is external
+  (README, upstream docs). This creates a high barrier to adoption, especially for users
+  who discover the operator via OperatorHub or the OpenShift Console software catalog.
+
+  ## Solution
+  Add ConsoleQuickStart resources to the operator OLM bundle so they are automatically
+  available in the OpenShift Console "Quick Starts" menu when the operator is installed.
+
+  Two QuickStart guides:
+  1. **Installation QuickStart** (sscsi-install-quickstart) — step-by-step guide:
+     Task 1: Install Secrets Store CSI Driver Operator from OperatorHub
+     Task 2: Create a ClusterCSIDriver resource to enable the driver
+  2. **Example Usage QuickStart** (sscsi-example-quickstart) — step-by-step guide:
+     Task 1: Verify operator is installed and running
+     Task 2: Select or create a project namespace
+     Task 3: Create a SecretProviderClass for a provider (Vault/AWS/Azure/GCP)
+     Task 4: Deploy a sample application that mounts secrets via CSI volume
+
+  Four ConsoleYAMLSample resources for provider-specific SecretProviderClass templates:
+  - Vault, AWS Secrets Manager / SSM, Azure Key Vault, GCP Secret Manager
+
+  ## Implementation approach — two-phase
+  Phase 1 (PR #94): Add all manifests to demo/console/ as standalone apply-able YAMLs.
+    Accessible via: oc apply -f demo/console/quick-start/secrets-store-csi/
+  Phase 2 (PR #95): Move example-usage QuickStart + samples into the OLM bundle
+    (config/manifests/stable/) so they ship automatically with the operator.
+    Add required release annotations so they appear on IBM Cloud Managed, self-managed HA,
+    and single-node developer deployments. Remove install QuickStart from OLM
+    (installation is OLM's responsibility; OLM handles it differently).
+
+  ## What is NOT in scope
+  - No Go source changes; no unit tests (manifest-only changes)
+  - Install QuickStart (sscsi-install-quickstart) remains in demo/ only — not in OLM bundle
+  - No ServiceMonitor or metrics changes
+
+  ## Risks
+  - Navigation path in console changes between OCP versions (Operators → Ecosystem rename)
+  - Provider-specific placeholder values require users to substitute real values
+  - Typo in PR #94 ("prosessing" → "possessing") fixed in PR #95
 
 jira_epic: |
-  PASTE_JIRA_EPIC_EXPORT_HERE
-  <!-- Jira epic export (summary, description, acceptance criteria) -->
+  Key: SSCSI-235
+  Type: Story | Status: Done | Priority: Normal
+  Summary: Add OpenShift Console QuickStart guides for Secrets Store CSI Driver
+  Component: secrets-store-csi-driver-operator
+  Target Version: 4.21 (warning: version not set at PR time; targeting main branch)
+
+  Description:
+    Provide interactive, step-by-step QuickStart guides accessible from the OpenShift Console
+    to lower the adoption barrier for the Secrets Store CSI Driver Operator.
+    Phase 1: Add ConsoleQuickStart and ConsoleYAMLSample manifests to demo/.
+    Phase 2: Move example-usage QuickStart to OLM bundle with proper release annotations.
+
+  Acceptance Criteria:
+    1. Two ConsoleQuickStart manifests: installation guide + example-usage guide
+    2. Four ConsoleYAMLSample manifests for Vault, AWS, Azure, GCP providers
+    3. Example-usage QuickStart and YAML samples included in OLM bundle
+       (config/manifests/stable/) with capability/include.release annotations
+    4. QuickStart visible in OpenShift Console under Quick Starts menu after operator install
+    5. All provider YAML samples have correct targetResource (secretproviderclasses)
+    6. E2E CI passes on both PRs
+
+  Linked PRs:
+    PR #94: https://github.com/openshift/secrets-store-csi-driver-operator/pull/94
+    PR #95: https://github.com/openshift/secrets-store-csi-driver-operator/pull/95
 
 repo_state: |
-  PASTE_REPO_STATE_HERE
-  <!-- Pre-feature repo state: commit SHA, branch, key file listing, architecture notes -->
+  # Pre-feature repo state
+  # Commit: a504fc5dd050e685409ec408e03da3d4a7526146 (SSCSI-230: library bump, merged 2025-11-23)
+  # Branch: main
+
+  ## Directory layout at base commit
+  assets/
+    assets.go                     # //go:embed *.yaml rbac/*.yaml (no network-policy yet)
+    csidriver.yaml
+    node.yaml                     # DaemonSet; image vars ${DRIVER_IMAGE} etc.; no NP label yet
+    node_sa.yaml, cabundle_cm.yaml
+    rbac/
+      privileged_role.yaml, node_privileged_binding.yaml
+      secretproviderclasses_role.yaml, secretproviderclasses_binding.yaml
+    # network-policy/ does NOT exist yet (added in later commits May 2025)
+  config/manifests/stable/
+    secrets-store-csi-driver-operator.clusterserviceversion.yaml  # CSV — no QuickStarts yet
+    # No sscsi-example-quickstart.yaml yet
+  demo/                           # DOES NOT EXIST yet (created by PR #94)
+  pkg/operator/
+    starter.go                    # RunOperator; CSIControllerSet chain (unchanged in this feature)
+    starter_test.go               # 4 table-driven tests for getOperatorSyncState
+
+  ## Architecture at base commit
+  - library-go csicontrollerset; no controller-runtime
+  - ClusterCSIDriver singleton; no custom CRD types
+  - Assets embedded via Go embed (not bindata); ${NAMESPACE} substitution at apply time
+  - OLM bundle in config/manifests/stable/; bundle.Dockerfile copies all *.yaml
+  - ConsoleQuickStart is a cluster-scoped resource (console.openshift.io/v1)
+  - ConsoleYAMLSample is a cluster-scoped resource (console.openshift.io/v1)
+  - OLM installs ConsoleQuickStart/ConsoleYAMLSample automatically if included in bundle
+
+  ## Test exemplar (starter_test.go)
+  Pattern: table-driven, t.Run(tc.name, ...), standard testing + library-go FakeOperatorClient
+  No assertion libraries. t.Fatalf for assertions, t.Errorf for non-fatal.
+  4 cases: Managed, Unmanaged, Removed, DeletionTimestamp+Managed→Removed
+
+  ## ConsoleQuickStart schema (relevant fields)
+  apiVersion: console.openshift.io/v1
+  kind: ConsoleQuickStart
+  metadata:
+    name: <name>
+    annotations:
+      capability.openshift.io/name: "Console"             # required for OLM bundle inclusion
+      include.release.openshift.io/ibm-cloud-managed: "true"
+      include.release.openshift.io/self-managed-high-availability: "true"
+      include.release.openshift.io/single-node-developer: "true"
+  spec:
+    displayName, description, durationMinutes, icon, tags, prerequisites
+    introduction, tasks[]: {title, description, review, summary}
+
+  ## ConsoleYAMLSample schema (relevant fields)
+  apiVersion: console.openshift.io/v1
+  kind: ConsoleYAMLSample
+  metadata:
+    name: <name>
+  spec:
+    targetResource: {apiVersion: secrets-store.csi.x-k8s.io/v1, kind: SecretProviderClass}
+    title, description, yaml (YAML string with provider-specific config)
 
 user_stories: |
-  PASTE_USER_STORIES_HERE
-  <!-- User stories linked to the epic (ID, title, description, acceptance criteria) -->
+  US-1: In-console installation guidance
+    As a cluster administrator discovering the Secrets Store CSI Driver via OperatorHub,
+    Given I have installed the operator from OperatorHub,
+    When I navigate to "Quick Starts" in the OpenShift Console,
+    Then I see "Get started with Secrets Store CSI Driver" QuickStart
+    And I can follow step-by-step tasks to create a ClusterCSIDriver and verify the driver runs.
+
+  US-2: In-console example usage with provider templates
+    As a developer who wants to mount cloud secrets into a pod,
+    Given the operator is installed and a ClusterCSIDriver exists,
+    When I navigate to Quick Starts in the OpenShift Console,
+    Then I see "Use Secrets Store CSI Driver" QuickStart
+    And I can create a SecretProviderClass from a provider-specific YAML sample (Vault/AWS/Azure/GCP)
+    And I can follow tasks to deploy a sample app that mounts the secret.
+
+  US-3: QuickStarts available automatically on operator install via OLM
+    As a cluster administrator installing via OLM subscription,
+    Given I install the operator via OLM (not manual oc apply),
+    When OLM applies the bundle,
+    Then the ConsoleQuickStart and ConsoleYAMLSample resources are created automatically
+    And they are visible in the Console without any additional manual steps.
+
+  US-4: Provider-specific YAML samples cover all major providers
+    As a developer using Vault, AWS, Azure, or GCP as their secret backend,
+    Given I navigate to create a SecretProviderClass in the Console,
+    When I select "Samples" in the YAML editor,
+    Then I see a provider-specific template for my backend
+    And the template has clearly marked placeholders I need to substitute.
 
 repo_prs: |
-  PASTE_PR_LINKS_AND_DIFFS_HERE
-  <!-- PR links and diffs for the completed feature implementation -->
+  ============================================================
+  PR #94: SSCSI-235: Add OpenShift Console QuickStart guides
+  URL: https://github.com/openshift/secrets-store-csi-driver-operator/pull/94
+  Author: chiragkyal | Merged: 2025-11-24
+  Commits: 1 (cc4e4326d17f7b62c4a007b71ca8a4a84e72eb16) | +328 lines | Files: 7
 
-# --- Optional: Bugs ---
-# List bugs discovered during/after the feature implementation.
-# These drive code-generation evals and template gap analysis.
+  Files changed:
+    demo/console/README.md                                    [new]
+    demo/console/quick-start/secrets-store-csi/
+      sscsi-install-quickstart.yaml                          [new] — ConsoleQuickStart
+      sscsi-example-quickstart.yaml                          [new] — ConsoleQuickStart
+      sscsi-sample-secretproviderclass-vault.yaml            [new] — ConsoleYAMLSample
+      sscsi-sample-secretproviderclass-aws.yaml              [new] — ConsoleYAMLSample
+      sscsi-sample-secretproviderclass-azure.yaml            [new] — ConsoleYAMLSample
+      sscsi-sample-secretproviderclass-gcp.yaml              [new] — ConsoleYAMLSample
+
+  Key design in sscsi-install-quickstart.yaml (2 tasks):
+    Task 1: Install operator → verify pod running in openshift-cluster-csi-drivers
+    Task 2: Create ClusterCSIDriver (secrets-store.csi.k8s.io) → verify daemonset ready
+
+  Key design in sscsi-example-quickstart.yaml (4 tasks):
+    Task 1: Verify operator installed and running
+    Task 2: Select or create project namespace
+    Task 3: Create SecretProviderClass (links to YAML samples)
+    Task 4: Deploy sample app with CSI volume → verify secret mounted in pod
+
+  No OLM annotations in this PR (added in PR #95 follow-up).
+  Accessible by: oc apply -f demo/console/quick-start/secrets-store-csi/
+  Verified: /verified by jfan (emmajiafan)
+
+  Review issues addressed in PR #95:
+    - Navigation text: "Operators" → "Ecosystem" section rename in console
+    - Typo: "prosessing" → "possessing" in example quickstart task text
+    - Add capability.openshift.io and include.release.openshift.io annotations
+
+  ============================================================
+  PR #95: SSCSI-235: Move quickstart guides to OLM bundle
+  URL: https://github.com/openshift/secrets-store-csi-driver-operator/pull/95
+  Author: chiragkyal | Merged: 2025-12-03
+  Commits: 1 (ff9dc895f52bd26ce6c74dc053c47fe71d28c5a1) | +7/-88 lines | Files: 7
+
+  Files changed:
+    config/manifests/stable/sscsi-example-quickstart.yaml   [new] — moved from demo/
+    demo/console/README.md                                   [modified — QuickStarts block removed]
+    demo/console/quick-start/secrets-store-csi/
+      sscsi-install-quickstart.yaml                         [deleted from demo/ — stays in demo only]
+      sscsi-example-quickstart.yaml                         [deleted from demo/ — moved to OLM bundle]
+      sscsi-sample-secretproviderclass-*.yaml               [deleted from demo/ — moved to bundle]
+
+  Key diff in config/manifests/stable/sscsi-example-quickstart.yaml (annotations added):
+  ```yaml
+  metadata:
+    annotations:
+      capability.openshift.io/name: "Console"
+      include.release.openshift.io/ibm-cloud-managed: "true"
+      include.release.openshift.io/self-managed-high-availability: "true"
+      include.release.openshift.io/single-node-developer: "true"
+  ```
+
+  Design decision: sscsi-install-quickstart NOT moved to OLM bundle.
+    Rationale: OLM itself handles operator installation; bundling an install QuickStart
+    creates a circular dependency (user needs OLM to install, but QuickStart appears after install).
+    Install QuickStart remains in demo/ for manual usage only.
+
+  Verified: /verified by pass (emmajiafan)
+
+  ============================================================
+  SUPPLEMENTARY: Network policies feature (no Jira key, ~May–Jun 2025)
+  Commits: cb3b22f2, 8974dbc4, 58320aaa, 796a110a
+
+  This feature shows the pattern for adding new static assets + wiring them into starter.go.
+  Included here as implementation pattern reference only (not the primary feature).
+
+  Commit cb3b22f2: Add network policy YAML assets
+    assets/assets.go: //go:embed *.yaml rbac/*.yaml → added network-policy/*.yaml
+    assets/network-policy/ [new dir]:
+      allow-egress-to-api-server-operand.yaml
+      allow-egress-to-api-server-operator.yaml
+      allow-ingress-to-metrics-operand.yaml    (uses ${NAMESPACE})
+      allow-ingress-to-metrics-operator.yaml
+
+  Commit 8974dbc4: Wire assets into starter.go ConditionalStaticResourcesController
+  ```diff
+  +  "network-policy/allow-egress-to-api-server-operator.yaml",
+  +  "network-policy/allow-ingress-to-metrics-operator.yaml",
+  +  "network-policy/allow-egress-to-api-server-operand.yaml",
+  +  "network-policy/allow-ingress-to-metrics-operand.yaml",
+  ```
+
+  Commit 58320aaa: Add RBAC to CSV for networkpolicies resource
+  ```diff
+  + - apiGroups: [networking.k8s.io]
+  +   resources: [networkpolicies]
+  +   verbs: [watch, list, get, create, delete, patch, update]
+  ```
+
+  Commit 796a110a: Refinement — reuse CSO-managed policies, remove duplicates
+    - Removed 3 of 4 network policy YAMLs (reuse CSO's operator + operand egress policies)
+    - Kept only: allow-ingress-to-metrics-operand.yaml (renamed with sscsi- prefix)
+    - Removed 3 entries from starter.go; kept only the ingress-to-metrics-operand entry
+    - Added label to node.yaml DaemonSet pods:
+        openshift.storage.network-policy.api-server: allow
+      (CSO's shared policy selects pods with this label for egress to API server)
+
+  ============================================================
+  SUPPLEMENTARY: TLS cert via service-ca-operator (STOR-2884, merged 2026-03-23)
+  PR: https://github.com/openshift/secrets-store-csi-driver-operator/pull/106
+  Author: jsafrane | +28 lines | Files: 2
+
+  New file: config/manifests/stable/secrets-store-csi-driver-operator-metrics-service.yaml
+    Service annotated with service.beta.openshift.io/serving-cert-secret-name
+    to trigger auto-generation of TLS secret by service-ca-operator.
+
+  Modified: CSV — adds --terminate-on-files args + volumeMount + secret volume
+    for /var/run/secrets/serving-cert
+
+  Pattern learned: OLM-bundle-only feature; no Go source changes; service-ca-operator
+  integration pattern for TLS (see security-guidelines.md §TLS).
+
+# --- Bugs ---
 
 bugs:
-  # - key: BUG-001
-  #   summary: "Brief description"
-  #   root_cause: "What went wrong"
-  #   fix_pr: "https://github.com/..."
-  #   affected_stage: "implementation"  # repo-assessment | constitution | plan | tasks | implementation | code-generation
+  - key: SSCSI-235-BUG-1
+    summary: "Console navigation path changed: 'Operators' renamed to 'Ecosystem'"
+    root_cause: |
+      PR #94 referenced navigation to the "Operators" section in the console for finding
+      "Installed Operators". Between PR #94 and PR #95, the OpenShift Console renamed
+      this section to "Ecosystem". PR #95 updated the QuickStart task text and navigation
+      highlight reference to use [Ecosystem]{{highlight qs-nav-ecosystem}}.
+      Caught during review by CodeRabbit (ask: verify navigation path is correct).
+    fix_pr: "https://github.com/openshift/secrets-store-csi-driver-operator/pull/95"
+    affected_stage: implementation
+
+  - key: SSCSI-235-BUG-2
+    summary: "Typo in example QuickStart: 'prosessing' instead of 'possessing'"
+    root_cause: |
+      PR #94 contained a typo in the SecretProviderClass creation task description.
+      Caught during CodeRabbit review of PR #95. Fixed in the same PR.
+    fix_pr: "https://github.com/openshift/secrets-store-csi-driver-operator/pull/95"
+    affected_stage: implementation
+
+  - key: SSCSI-235-GAP-1
+    summary: "Install QuickStart was initially bundled in OLM then removed"
+    root_cause: |
+      The initial plan (PR #94) included both an install QuickStart and an example-usage
+      QuickStart. During PR #95, the decision was made NOT to include the install QuickStart
+      in the OLM bundle — the rationale being that installing via OLM and then having an
+      OLM-bundled "how to install" guide is circular. Only the example-usage QuickStart
+      was moved to the OLM bundle. This design decision was not captured in the original
+      feature spec.
+    fix_pr: "https://github.com/openshift/secrets-store-csi-driver-operator/pull/95 (resolved)"
+    affected_stage: specs
+
+  - key: SSCSI-235-GAP-2
+    summary: "No OLM annotations in PR #94 — required for multi-deployment visibility"
+    root_cause: |
+      PR #94 added QuickStart manifests without the required OLM annotations:
+        capability.openshift.io/name: "Console"
+        include.release.openshift.io/ibm-cloud-managed: "true"
+        include.release.openshift.io/self-managed-high-availability: "true"
+        include.release.openshift.io/single-node-developer: "true"
+      Without these, the QuickStart would not appear on IBM Cloud Managed or
+      single-node developer deployments. Fixed in PR #95 when moving to OLM bundle.
+      Root cause: missing spec requirement for multi-deployment annotation conventions.
+    fix_pr: "https://github.com/openshift/secrets-store-csi-driver-operator/pull/95"
+    affected_stage: specs

@@ -1,4 +1,13 @@
-round: 0
-baseline_version: "0.0.0"
+round: 1
+baseline_version: "1.0.0"
 
-history: []
+history:
+  - round: 1
+    date: "2026-07-02"
+    feature_bundle: "SSCSI-235"
+    epic_key: "SSCSI-235"
+    issues_analyzed: 5
+    patterns_found: 5
+    templates_patched: 5
+    eval_cases_generated: 24
+    snapshot: "eval-generation-workflow/rounds/round-1/round-1-summary.md"

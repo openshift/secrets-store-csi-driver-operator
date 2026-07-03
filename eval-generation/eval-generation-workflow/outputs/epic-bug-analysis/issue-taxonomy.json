@@ -1,0 +1,104 @@
+{
+  "feature_bundle": "SSCSI-235",
+  "round": 1,
+  "generated": "2026-07-02",
+  "issues": [
+    {
+      "id": "I-001",
+      "key": "SSCSI-235-GAP-2",
+      "title": "OLM bundle annotations missing from initial ConsoleQuickStart manifests",
+      "stage_caught": "implementation (PR review)",
+      "stage_should_catch": "specs",
+      "severity": "high",
+      "type": "missing_requirement",
+      "pattern": "OLM-bundle-annotation-omission",
+      "template_gap": ["spec-template.md — no OLM annotation requirement section", "validation-template.md — no OLM bundle completeness trigger"],
+      "eval_stages": ["repo-assessment", "constitution", "plan", "specs"],
+      "patchable": true,
+      "rca": "RCA-1"
+    },
+    {
+      "id": "I-002",
+      "key": "SSCSI-235-GAP-1",
+      "title": "Install QuickStart OLM bundle placement not decided in spec",
+      "stage_caught": "implementation (PR #95 review)",
+      "stage_should_catch": "specs",
+      "severity": "medium",
+      "type": "scope_ambiguity",
+      "pattern": "OLM-bundle-placement-decision",
+      "template_gap": ["spec-template.md — no OLM bundle-vs-demo placement decision section", "plan-template.md §3.5 — no per-artifact bundle placement matrix"],
+      "eval_stages": ["specs", "plan"],
+      "patchable": true,
+      "rca": "RCA-1, RCA-3"
+    },
+    {
+      "id": "I-003",
+      "key": "SSCSI-235-BUG-1",
+      "title": "Console navigation token changed (Operators → Ecosystem) between PRs",
+      "stage_caught": "implementation (CodeRabbit PR review)",
+      "stage_should_catch": "repo-assessment",
+      "severity": "medium",
+      "type": "api_version_drift",
+      "pattern": "console-api-token-version-coupling",
+      "template_gap": ["repo-assessment-template.md §10.5 — no console navigation token version guidance"],
+      "eval_stages": ["repo-assessment"],
+      "patchable": true,
+      "rca": "RCA-2"
+    },
+    {
+      "id": "I-004",
+      "key": "SSCSI-235-BUG-2",
+      "title": "Typo in QuickStart task description text",
+      "stage_caught": "implementation (CodeRabbit)",
+      "stage_should_catch": "implementation",
+      "severity": "low",
+      "type": "content_quality",
+      "pattern": "user-facing-copy-unreviewed",
+      "template_gap": ["tasks-template.md — no content/copy review step for manifest-only tasks"],
+      "eval_stages": ["tasks", "implementation"],
+      "patchable": true,
+      "rca": "RCA-5"
+    },
+    {
+      "id": "I-005",
+      "key": "network-policy-redesign",
+      "title": "Network policies reimplemented instead of reusing CSO-managed hook",
+      "stage_caught": "implementation (follow-up commit)",
+      "stage_should_catch": "plan",
+      "severity": "medium",
+      "type": "architecture_deviation",
+      "pattern": "platform-pattern-reinvention",
+      "template_gap": ["agents.md — CSO network policy label hook not documented", "repo-assessment-template.md §5 — no prompt to survey platform-level network hooks", "plan-template.md — no 'survey existing platform patterns' prerequisite step"],
+      "eval_stages": ["repo-assessment", "plan"],
+      "patchable": true,
+      "rca": "RCA-4"
+    }
+  ],
+  "pattern_summary": {
+    "OLM-bundle-annotation-omission": {
+      "count": 2,
+      "issues": ["I-001"],
+      "fix_stages": ["specs", "plan", "tasks"]
+    },
+    "OLM-bundle-placement-decision": {
+      "count": 1,
+      "issues": ["I-002"],
+      "fix_stages": ["specs", "plan"]
+    },
+    "console-api-token-version-coupling": {
+      "count": 1,
+      "issues": ["I-003"],
+      "fix_stages": ["repo-assessment"]
+    },
+    "user-facing-copy-unreviewed": {
+      "count": 1,
+      "issues": ["I-004"],
+      "fix_stages": ["tasks", "implementation"]
+    },
+    "platform-pattern-reinvention": {
+      "count": 1,
+      "issues": ["I-005"],
+      "fix_stages": ["repo-assessment", "plan"]
+    }
+  }
+}

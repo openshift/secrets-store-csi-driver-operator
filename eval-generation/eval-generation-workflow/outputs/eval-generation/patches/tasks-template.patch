@@ -1,0 +1,24 @@
+--- /Users/ckyal/go/src/github.com/chiragkyal/secrets-store-csi-driver-operator/openspec/schemas/openspec-agile-workflow/templates/tasks-template.md	2026-07-02 17:47:50
++++ /Users/ckyal/go/src/github.com/chiragkyal/secrets-store-csi-driver-operator/eval-generation/output-refined-templates/tasks-template.md	2026-07-02 18:38:34
+@@ -237,7 +237,21 @@
+ - **Target file(s):** [FILE_PATHS_FROM_REPO_ASSESSMENT_OR_PLAN]
+ - **Non-goals / forbidden edits:** [WHAT_NOT_TO_TOUCH]
+ - **Implementation notes:** [NON_CODE_CONSTRAINTS_AND_PATTERNS]
++  - *For tasks adding OLM bundle resources (`config/manifests/stable/`)*: Include OLM bundle
++    annotation checklist as a non-negotiable implementation note: `capability.openshift.io/name`
++    and all `include.release.openshift.io/*` keys must be present. Do not omit annotations even
++    if the spec does not mention them — treat this as a bundle contract requirement.
++  - *For tasks adding platform infrastructure (network policies, RBAC, TLS)*: Check §5 Reusable
++    Assets in repo-assessment for existing platform hooks (CSO labels, CNO policies) before
++    implementing standalone resources.
+ - **Acceptance criteria:** [TRACES_TO_SPECS_MD_IDS]
++  - *For manifest-only tasks producing user-facing content (ConsoleQuickStart, etc.)*: Add
++    explicit AC: "All user-visible text fields (description, introduction, task descriptions)
++    are free of typos, accurately reference current navigation paths, and use consistent
++    operator terminology." Content review is a blocking AC for user-facing manifests.
++  - *For OLM bundle tasks*: Add explicit AC: "Verify all new resources in `config/manifests/stable/`
++    carry the full set of deployment-profile annotations. Cross-check against existing bundle
++    resources for the expected annotation set."
+ - **Downstream handoff:** [WHAT_NEXT_TASK_EXPECTS]
+ 
+ ### § 5. Orchestration Notes

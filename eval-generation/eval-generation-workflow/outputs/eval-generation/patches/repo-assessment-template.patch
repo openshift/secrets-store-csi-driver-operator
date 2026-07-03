@@ -1,0 +1,37 @@
+--- /Users/ckyal/go/src/github.com/chiragkyal/secrets-store-csi-driver-operator/openspec/schemas/openspec-agile-workflow/templates/repo-assessment-template.md	2026-07-02 17:47:50
++++ /Users/ckyal/go/src/github.com/chiragkyal/secrets-store-csi-driver-operator/eval-generation/output-refined-templates/repo-assessment-template.md	2026-07-02 18:38:57
+@@ -330,6 +330,12 @@
+ * How proxy settings propagate (e.g., OLM → operator → operands)
+ * Trusted CA bundle injection mechanism
+ * Network policy patterns
++* **Platform network policy hooks** (for OpenShift storage operators): Check whether CSO
++  (cluster-storage-operator) manages shared egress/ingress network policies for storage
++  workloads. If so, document the pod label keys that opt pods into those policies (e.g.,
++  `openshift.storage.network-policy.api-server: allow`). List them in §5 as reusable assets
++  with exact label key/values. Do NOT create standalone network policy objects for cases
++  already managed by CSO.
+ 
+ ### 10.3 Cloud Provider Integration
+ * Credential provisioning (CCO, CredentialsRequest, workload identity, etc.)
+@@ -344,12 +350,21 @@
+ ### 10.5 Console / UI Integration
+ * Console plugins, YAML samples, quickstarts
+ * CLI tooling, dashboards
++* **For ConsoleQuickStart resources**: Enumerate all `qs-nav-*` navigation tokens used in
++  existing manifests, note which OCP version introduced them, and flag that tokens are
++  version-coupled (e.g., `qs-nav-operator-hub` was renamed to `qs-nav-ecosystem` in OCP 4.18+).
++  Mark each token as verified/unverified against the target release branch. Do not copy
++  tokens from older examples without checking.
+ 
+ ### 10.6 Packaging & Lifecycle
+ * For OLM operators: CSV structure, upgrade path (replaces/skipRange), channels,
+   installModes, scorecard tests
+ * For web apps: deployment strategy, rollback mechanism
+ * For libraries: publishing, versioning, changelog
++* **OLM bundle resource annotations**: For each resource type shipped in the OLM bundle,
++  document required metadata annotations (e.g., `capability.openshift.io/name`,
++  `include.release.openshift.io/*`) and their target values for the operator's deployment
++  profiles (HA, IBM Cloud Managed, SNO). List which resources require which capability name.
+ 
+ ## 11. Risks & Downstream Impacts
+ *Warnings for the Planner regarding potential breakages and high-risk areas.*
