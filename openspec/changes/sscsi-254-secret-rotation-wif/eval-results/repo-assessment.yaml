@@ -1,0 +1,25 @@
+artifact_id: repo-assessment
+artifact_path: openspec/changes/sscsi-254-secret-rotation-wif/repo-assessment.md
+stage: repo-assessment
+stage_eval_file: evals/repo-assessment_eval.yaml
+scored_at: "2026-07-03T13:59:00Z"
+overall_score: 100
+overall_pass: true
+refinement_applied: false
+cases:
+  - id: ra-001
+    score: 100
+    pass: true
+    failures: []
+  - id: ra-002
+    score: 100
+    pass: true
+    failures: []
+  - id: ra-003
+    score: 100
+    pass: true
+    failures: []
+  - id: ra-004
+    score: 100
+    pass: true
+    failures: []
