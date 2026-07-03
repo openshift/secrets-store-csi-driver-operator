@@ -1,0 +1,37 @@
+meta:
+  task_id: T1_3
+  task_title: "Implement csiDriverAssetFunc"
+  change: sscsi-254-secret-rotation-wif
+  oape_command: api-implement
+  scored_at: "2026-07-03"
+  score_pct: 100
+  cases_evaluated: 5
+  cases_passed: 1
+  cases_na: 4
+  refinement_rounds: 0
+
+results:
+  - id: cg-001
+    verdict: N/A
+    reason: "Task is api-implement, not manual. No OLM bundle YAML generated."
+
+  - id: cg-002
+    verdict: N/A
+    reason: "Task is api-implement, not manual. No ConsoleQuickStart YAML generated."
+
+  - id: cg-003
+    verdict: N/A
+    reason: "Task is api-implement, not manual. No demo/ output file placement needed."
+
+  - id: cg-004
+    verdict: N/A
+    reason: "Task is api-implement. No DaemonSet label or NetworkPolicy file created in T1_3."
+
+  - id: cg-005
+    verdict: PASS
+    reason: >
+      csiDriverAssetFunc returns a resourceapply.AssetFunc that dispatches to the existing
+      WithConditionalStaticResourcesController (via composite function pattern). No new
+      WithCSIDriverController or standalone CSIControllerSet hook was created. The function
+      wraps the same static resources controller list; T1_4 will replace replaceNamespaceFunc
+      with this composite to complete wiring. Pattern follows network-policy commit 8974dbc4.

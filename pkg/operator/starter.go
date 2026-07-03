@@ -3,13 +3,16 @@ package operator
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	storagev1 "k8s.io/api/storage/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/dynamic"
@@ -29,6 +32,7 @@ import (
 	goc "github.com/openshift/library-go/pkg/operator/genericoperatorclient"
 	"github.com/openshift/library-go/pkg/operator/management"
 	"github.com/openshift/library-go/pkg/operator/resource/resourceapply"
+	"github.com/openshift/library-go/pkg/operator/resource/resourceread"
 	"github.com/openshift/library-go/pkg/operator/v1helpers"
 	"github.com/openshift/secrets-store-csi-driver-operator/assets"
 )
@@ -151,6 +155,101 @@ func replaceNamespaceFunc(namespace string) resourceapply.AssetFunc {
 		}
 		return bytes.ReplaceAll(content, []byte(namespaceKey), []byte(namespace)), nil
 	}
+}
+
+// csiDriverAssetFunc returns an AssetFunc for use with WithConditionalStaticResourcesController.
+// When the requested asset is "csidriver.yaml" it generates the manifest bytes dynamically
+// from the ClusterCSIDriver spec; for all other assets it falls through to namespace substitution
+// on the static embedded file.
+//
+// This is the composite replacement for replaceNamespaceFunc used after T1_4 wires it in.
+func csiDriverAssetFunc(clusterCSIDriverLister cache.GenericLister, namespace string) resourceapply.AssetFunc {
+	return func(name string) ([]byte, error) {
+		if name != "csidriver.yaml" {
+			content, err := assets.ReadFile(name)
+			if err != nil {
+				panic(err)
+			}
+			return bytes.ReplaceAll(content, []byte(namespaceKey), []byte(namespace)), nil
+		}
+		return generateCSIDriverBytes(clusterCSIDriverLister)
+	}
+}
+
+// generateCSIDriverBytes builds storage.k8s.io/v1 CSIDriver manifest bytes from the static
+// csidriver.yaml baseline, overlaying fields driven by the ClusterCSIDriver spec:
+//
+//   - spec.requiresRepublish → true when SecretRotation.Type is "Custom"
+//   - spec.tokenRequests     → populated from TokenRequests.Managed.Audiences when type is "Managed"
+//                              omitted (nil) when "Unmanaged" so spec-hash stays stable and the
+//                              live object's tokenRequests are preserved (FR-005)
+//
+// Returns JSON bytes accepted by ReadGenericWithUnstructured.
+func generateCSIDriverBytes(clusterCSIDriverLister cache.GenericLister) ([]byte, error) {
+	staticBytes, err := assets.ReadFile("csidriver.yaml")
+	if err != nil {
+		return nil, fmt.Errorf("generateCSIDriverBytes: failed to read csidriver.yaml: %w", err)
+	}
+	csiDriver := resourceread.ReadCSIDriverV1OrDie(staticBytes)
+
+	obj, err := clusterCSIDriverLister.Get(providerName)
+	if apierrors.IsNotFound(err) {
+		// No ClusterCSIDriver yet — return static baseline (upgrade no-op).
+		csiDriver.TypeMeta = metav1.TypeMeta{APIVersion: "storage.k8s.io/v1", Kind: "CSIDriver"}
+		return json.Marshal(csiDriver)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("generateCSIDriverBytes: failed to get ClusterCSIDriver %q: %w", providerName, err)
+	}
+
+	unstr, ok := obj.(*unstructured.Unstructured)
+	if !ok {
+		return nil, fmt.Errorf("generateCSIDriverBytes: unexpected object type %T", obj)
+	}
+
+	clusterCSIDriver := &opv1.ClusterCSIDriver{}
+	if err := runtime.DefaultUnstructuredConverter.FromUnstructured(unstr.Object, clusterCSIDriver); err != nil {
+		return nil, fmt.Errorf("generateCSIDriverBytes: failed to convert ClusterCSIDriver: %w", err)
+	}
+
+	if clusterCSIDriver.Spec.DriverConfig.DriverType == opv1.SecretsStoreDriverType {
+		ssConfig := clusterCSIDriver.Spec.DriverConfig.SecretsStore
+
+		if ssConfig.SecretRotation.Type == opv1.SecretRotationCustom {
+			requiresRepublish := true
+			csiDriver.Spec.RequiresRepublish = &requiresRepublish
+		}
+		// SecretRotationNone or unset: RequiresRepublish stays nil (matches static baseline).
+
+		if ssConfig.TokenRequests.Type == opv1.TokenRequestsManaged {
+			csiDriver.Spec.TokenRequests = makeCSIDriverTokenRequests(ssConfig.TokenRequests.Managed.Audiences)
+		}
+		// TokenRequestsUnmanaged or unset: TokenRequests stays nil, spec-hash is stable (FR-005).
+	}
+
+	csiDriver.TypeMeta = metav1.TypeMeta{APIVersion: "storage.k8s.io/v1", Kind: "CSIDriver"}
+	return json.Marshal(csiDriver)
+}
+
+// makeCSIDriverTokenRequests converts the operator API audience list to the
+// Kubernetes storagev1.TokenRequest slice expected by CSIDriverSpec.TokenRequests.
+func makeCSIDriverTokenRequests(audiences *[]opv1.SecretsStoreTokenRequest) []storagev1.TokenRequest {
+	if audiences == nil {
+		return nil
+	}
+	result := make([]storagev1.TokenRequest, 0, len(*audiences))
+	for _, a := range *audiences {
+		tr := storagev1.TokenRequest{}
+		if a.Audience != nil {
+			tr.Audience = *a.Audience
+		}
+		if a.ExpirationSeconds > 0 {
+			exp := int64(a.ExpirationSeconds)
+			tr.ExpirationSeconds = &exp
+		}
+		result = append(result, tr)
+	}
+	return result
 }
 
 // withSecretRotationHook returns a DaemonSetHookFunc that mutates the csi-driver container
