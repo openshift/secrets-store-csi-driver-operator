@@ -1,0 +1,59 @@
+{
+  "metadata": {
+    "ticket_id": "SSCSI-254",
+    "doc_type": "enhancement",
+    "pass_threshold": 80,
+    "output_mode": "json_plus_summary",
+    "weights_applied": { "completeness": 0.6, "quality": 0.4 }
+  },
+  "validation_results": {
+    "completeness_score": 87,
+    "quality_score": 84,
+    "overall_score": 86,
+    "overall_status": "PASS",
+    "missing_elements": [
+      "RBAC extension: the dynamic AssetFunc requires ClusterCSIDriver lister access — the spec does not mention whether new RBAC rules are needed in the CSV for the operator to read its own CR dynamically (vs. the current StaticResourceController approach)",
+      "Target OpenShift version: target is 5.0.0 (from jira.yaml) but not stated in the spec body — downstream agents cannot determine platform matrix constraints from the spec alone"
+    ],
+    "quality_issues": [
+      {
+        "type": "Testability",
+        "quote": "As a cluster administrator, I want to disable automatic secret rotation...",
+        "suggestion": "User stories are in prose form. Rewrite as Given/When/Then scenarios so they map directly to automated tests. E.g., 'Given a ClusterCSIDriver with secretRotation.type: None, When the operator reconciles, Then the DaemonSet has --enable-secret-rotation=false and CSIDriver has requiresRepublish: false'."
+      },
+      {
+        "type": "Ambiguity",
+        "quote": "minimumRefreshAge: 300",
+        "suggestion": "The field name 'minimumRefreshAge' depends on openshift/api PR #2906 (currently open). If PR #2906 is not merged before implementation begins, the field may still be named 'rotationPollIntervalSeconds'. Add an assumption: 'A-001: Implementation will use the field name from openshift/api PR #2906 once merged; if still open, use the current name from PR #2846 and track the rename separately.'"
+      },
+      {
+        "type": "Testability",
+        "quote": "All unit tests pass for nil-path permutations... E2E tests cover: rotation on/off/custom interval...",
+        "suggestion": "ACs 7 and 8 are implementation delivery criteria (tests pass), not user-observable outcomes. Move to a Test Plan section and replace with user-observable ACs such as: 'AC-7: The operator status shows Available=True after ClusterCSIDriver is configured with valid secretsStore settings.'"
+      }
+    ],
+    "project_ecosystem": {
+      "managed_resource_semantics_covered": true,
+      "gaps": "tokenRequests.type Unmanaged/Managed semantics are well covered; ClusterCSIDriver managementState (Managed/Unmanaged/Removed) interaction with the new driverConfig fields is not explicitly addressed — what happens to CSIDriver and DaemonSet args when managementState is set to Removed while driverConfig is set?",
+      "csi_driver_lifecycle_covered": true,
+      "daemonset_deployment_covered": false,
+      "daemonset_gaps": "Spec mentions DaemonSet arg injection but does not address rolling update behavior: when minimumRefreshAge changes, will pods be restarted? This is a user-observable behavior gap.",
+      "rbac_scope_covered": false,
+      "rbac_gaps": "Dynamic AssetFunc reads ClusterCSIDriver via lister — does the operator's current RBAC already allow this read? No new ServiceAccount permissions are mentioned in the spec.",
+      "platform_matrix_covered": false,
+      "platform_gaps": "Target OCP version (5.0.0) is in jira.yaml but not the spec body. MicroShift is correctly called out as out-of-scope.",
+      "olm_upgrade_edge_covered": true,
+      "image_reference_covered": true,
+      "note": "No OLM bundle annotation changes required for this feature (not a ConsoleQuickStart/manifest-only feature)"
+    },
+    "blockers": [],
+    "non_blockers": [
+      "User stories lack Given/When/Then testable format — recommended to improve traceability to automated tests",
+      "Field name 'minimumRefreshAge' depends on open PR #2906 — add explicit A-001 assumption",
+      "ACs 7–8 are implementation-level (tests pass) — replace with user-observable equivalents in a Test Plan section",
+      "DaemonSet rolling update behavior on configuration change not specified",
+      "managementState: Removed interaction with new driverConfig not addressed",
+      "RBAC for ClusterCSIDriver lister not mentioned — verify operator already has this access"
+    ]
+  }
+}

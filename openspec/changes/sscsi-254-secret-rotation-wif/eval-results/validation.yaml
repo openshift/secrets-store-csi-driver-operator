@@ -1,0 +1,10 @@
+artifact_id: validation
+artifact_path: openspec/changes/sscsi-254-secret-rotation-wif/validation.json
+stage: validation
+gate: rubric_only
+scored_at: "2026-07-03T12:31:00Z"
+overall_score: 86
+overall_pass: true
+completeness_score: 87
+quality_score: 84
+refinement_applied: false
