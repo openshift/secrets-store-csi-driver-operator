@@ -1,0 +1,33 @@
+stage: code-generation
+task: T1_1
+oape_command: manual-discovery
+generated: "2026-07-03"
+
+score_pct: 100
+cases_pass: 5
+cases_total: 5
+refinement_rounds: 0
+
+eval_cases:
+  - id: cg-001
+    result: N/A
+    rationale: "T1_1 is discovery-only; no YAML manifests generated."
+  - id: cg-002
+    result: N/A
+    rationale: "T1_1 is discovery-only; no QuickStart YAML generated."
+  - id: cg-003
+    result: N/A
+    rationale: "T1_1 is discovery-only; no files placed anywhere."
+  - id: cg-004
+    result: N/A
+    rationale: "T1_1 is discovery-only; no DaemonSet or NP files modified."
+  - id: cg-005
+    result: N/A
+    rationale: "T1_1 is discovery-only; no starter.go or static assets modified."
+
+findings:
+  ApplyCSIDriver: CONFIRMED
+  signature: "func ApplyCSIDriver(ctx, client storageclientv1.CSIDriversGetter, recorder, required *storagev1.CSIDriver) (*storagev1.CSIDriver, bool, error)"
+  annotation_handling: MERGE (EnsureObjectMeta -> MergeMap; csi.openshift.io/managed must be in required bytes)
+  required_label: "security.openshift.io/csi-ephemeral-volume-profile when Ephemeral lifecycle mode"
+  t1_3_approach: "Use ApplyCSIDriver directly (not generic unstructured)"

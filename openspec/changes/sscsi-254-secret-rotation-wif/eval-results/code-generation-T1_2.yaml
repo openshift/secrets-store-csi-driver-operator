@@ -1,0 +1,32 @@
+stage: code-generation
+task: T1_2
+oape_command: manual-discovery
+generated: "2026-07-03"
+
+score_pct: 100
+cases_pass: 5
+cases_total: 5
+refinement_rounds: 0
+
+eval_cases:
+  - id: cg-001
+    result: N/A
+    rationale: "T1_2 is discovery-only; no YAML manifests generated."
+  - id: cg-002
+    result: N/A
+    rationale: "T1_2 is discovery-only; no QuickStart YAML generated."
+  - id: cg-003
+    result: N/A
+    rationale: "T1_2 is discovery-only; no files placed anywhere."
+  - id: cg-004
+    result: N/A
+    rationale: "T1_2 is discovery-only; no DaemonSet or NP files modified."
+  - id: cg-005
+    result: N/A
+    rationale: "T1_2 is discovery-only; no starter.go or static assets modified."
+
+findings:
+  Q3_per_resource_asset_func: CONFIRMED
+  approach: "Composite AssetFunc — dispatch on name=='csidriver.yaml', delegate others to assets.ReadFile+namespace-replace"
+  no_library_go_changes: true
+  t1_4_plan: "Replace replaceNamespaceFunc with makeAssetFunc(clusterCSIDriver, namespace) in starter.go"

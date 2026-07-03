@@ -94,8 +94,8 @@ graph TD
 
 1. - [x] T0_1 — Update go.mod and vendor tree for openshift/api + client-go
 2. - [x] T0_2 — Verify new API types compile and confirm field name (A-001)
-3. T1_1 — Discovery: verify ApplyCSIDriver signature and operator RBAC (Q2 + A-002)
-4. T1_2 — Discovery: verify staticresourcecontroller dynamic asset function support (Q3)
+3. - [x] T1_1 — Discovery: verify ApplyCSIDriver signature and operator RBAC (Q2 + A-002)
+4. - [x] T1_2 — Discovery: verify staticresourcecontroller dynamic asset function support (Q3)
 5. T2_1 — Implement `withSecretRotationHook` (parallel-safe with T1_1, T1_2 after T0_2)
 6. T1_3 — Implement `csiDriverAssetFunc` (after T1_1, T1_2)
 7. T2_2 — Register rotation hook in `WithCSIDriverNodeService` (after T2_1)
