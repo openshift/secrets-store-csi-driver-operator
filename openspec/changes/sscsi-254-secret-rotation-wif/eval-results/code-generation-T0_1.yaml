@@ -1,0 +1,42 @@
+stage: code-generation
+task: T0_1
+oape_command: manual-tooling  # go mod tidy + go mod vendor (not a manifest/controller task)
+generated: "2026-07-03"
+
+score_pct: 100
+cases_pass: 5
+cases_total: 5
+refinement_rounds: 0
+
+eval_cases:
+  - id: cg-001
+    result: N/A
+    rationale: "T0_1 is a go mod vendor update; no YAML manifests generated. Annotation eval does not apply."
+
+  - id: cg-002
+    result: N/A
+    rationale: "T0_1 is a go mod vendor update; no ConsoleQuickStart YAML generated. Navigation token eval does not apply."
+
+  - id: cg-003
+    result: N/A
+    rationale: "T0_1 is a go mod vendor update; no QuickStart files placed anywhere. Placement eval does not apply."
+
+  - id: cg-004
+    result: N/A
+    rationale: "T0_1 is a go mod vendor update; no DaemonSet or network policy files modified. Label eval does not apply."
+
+  - id: cg-005
+    result: N/A
+    rationale: "T0_1 is a go mod vendor update; no static assets added or starter.go modified. Wiring eval does not apply."
+
+constitution_compliance:
+  no_type_invention: PASS  # Using upstream SecretsStoreCSIDriverConfigSpec types, not inventing local ones
+  vendor_isolation: PASS   # Only go.mod, go.sum, and vendor/ changed; no operator source changes
+  build_clean: PASS        # go build ./... exits 0
+  tests_green: PASS        # make test: ok .../pkg/operator
+
+notes:
+  - "openshift/api bumped from v0.0.0-20260302174620-dcac36b908db to v0.0.0-20260702202555-ef71f942ef6c"
+  - "openshift/client-go bumped to v0.0.0-20260703082747-24d059aea27a"
+  - "openshift/library-go bumped to v0.0.0-20260703081820-c6cd1a243d2d"
+  - "Field name is rotationPollIntervalSeconds (PR #2906 rename to minimumRefreshAge still open)"
