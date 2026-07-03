@@ -1,0 +1,24 @@
+artifact_id: plan
+artifact_path: openspec/changes/sscsi-254-secret-rotation-wif/plan.md
+stage: plan
+stage_eval_file: evals/plan_eval.yaml
+scored_at: "2026-07-03T14:17:00Z"
+overall_score: 100
+overall_pass: true
+refinement_applied: false
+cases:
+  - id: plan-001
+    score: 100
+    pass: true
+    failures: []
+    note: "SSCSI-254 adds no new OLM bundle resources; §3.5 correctly states N/A with rationale"
+  - id: plan-002
+    score: 100
+    pass: true
+    failures: []
+    note: "No network policy phases in plan; Phase 2 explicitly prohibits standalone NP creation"
+  - id: plan-003
+    score: 100
+    pass: true
+    failures: []
+    note: "No bundle resource phases; annotation verification N/A by feature scope"
