@@ -1,0 +1,29 @@
+artifact_id: tasks
+artifact_path: openspec/changes/sscsi-254-secret-rotation-wif/tasks.md
+stage: tasks
+stage_eval_file: evals/tasks_eval.yaml
+scored_at: "2026-07-03T14:26:00Z"
+overall_score: 100
+overall_pass: true
+refinement_applied: false
+cases:
+  - id: tasks-001
+    score: 100
+    pass: true
+    failures: []
+    note: "No tasks target config/manifests/stable/; SSCSI-254 adds no OLM bundle resources"
+  - id: tasks-002
+    score: 100
+    pass: true
+    failures: []
+    note: "No ConsoleQuickStart manifest tasks; not in scope for SSCSI-254"
+  - id: tasks-003
+    score: 100
+    pass: true
+    failures: []
+    note: "No install QuickStart task; not in scope for SSCSI-254"
+  - id: tasks-004
+    score: 100
+    pass: true
+    failures: []
+    note: "No network policy tasks; CSO label already present; no new NPs in SSCSI-254"
