@@ -1,0 +1,57 @@
+jira_key: SSCSI-254
+summary: "Configurable secret rotation and WIF support for Secrets Store CSI Driver"
+issue_type: Story
+status: In Progress
+priority: Normal
+component: secrets-store-csi-driver-operator
+target_version: "5.0.0"
+
+ep_url: https://github.com/openshift/enhancements/pull/2012
+ep_file: inputs/ep.md
+ep_title: "csi-secrets-store-rotation-and-wif"
+ep_status: merged
+ep_merged: "2026-07-02"
+
+api_pr: https://github.com/openshift/api/pull/2846
+api_pr_title: "SSCSI-245: Add Secrets Store CSI driver configuration to ClusterCSIDriver API"
+api_pr_status: merged
+
+rename_pr: https://github.com/openshift/api/pull/2906
+rename_pr_title: "SSCSI-245: Rename rotationPollIntervalSeconds to minimumRefreshAge"
+rename_pr_status: open
+
+repo: https://github.com/openshift/secrets-store-csi-driver-operator
+
+description: |
+  Extend the OpenShift Secrets Store CSI Driver Operator to allow cluster administrators
+  to configure:
+  1. Secret rotation behavior (enable/disable, minimumRefreshAge interval) via ClusterCSIDriver
+  2. Workload identity federation (WIF) tokenRequests audiences via ClusterCSIDriver
+
+  These settings are dynamically propagated to:
+  - storage.k8s.io/v1 CSIDriver object (requiresRepublish, tokenRequests)
+  - Driver node DaemonSet container args (--enable-secret-rotation, --rotation-poll-interval)
+
+  Key design decisions from EP review:
+  - tokenRequests.type: Unmanaged (default) preserves existing manually-patched tokenRequests
+    on the CSIDriver (e.g., Azure WIF audiences configured before this feature existed)
+  - tokenRequests.type: Managed → operator is sole source of truth; immutable once set
+  - requiresRepublish mirrors secretRotation.type (false when type: None)
+  - minimumRefreshAge field replaces rotationPollIntervalSeconds (renamed in openshift/api PR #2906)
+  - Upgrade safety: no behavior change for clusters without driverConfig set
+
+reviewers:
+  - mytreya-rh
+  - dobsonj
+  - jsafrane
+
+notes: |
+  The EP is merged (Jul 2, 2026). The openshift/api PR #2846 adding the API types is also
+  merged. The rename PR #2906 (rotationPollIntervalSeconds → minimumRefreshAge) is still open.
+
+  Implementation in secrets-store-csi-driver-operator requires:
+  - Replace static csidriver.yaml with a dynamic AssetFunc
+  - Add DaemonSetHookFunc for --enable-secret-rotation and --rotation-poll-interval
+  - Wire ClusterCSIDriver informer into CSIDriverNodeServiceController
+  - Unit tests for all nil-path permutations of driverConfig/secretsStore/secretRotation/tokenRequests
+  - E2E tests for rotation on/off/custom, tokenRequests managed/unmanaged, upgrade scenarios
