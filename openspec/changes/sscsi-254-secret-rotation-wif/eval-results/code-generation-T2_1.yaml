@@ -1,0 +1,42 @@
+stage: code-generation
+task: T2_1
+oape_command: api-implement
+generated: "2026-07-03"
+
+score_pct: 100
+cases_pass: 5
+cases_total: 5
+refinement_rounds: 0
+
+eval_cases:
+  - id: cg-001
+    result: N/A
+    rationale: "T2_1 adds Go functions only; no YAML manifests generated."
+  - id: cg-002
+    result: N/A
+    rationale: "T2_1 adds Go functions only; no QuickStart YAML generated."
+  - id: cg-003
+    result: N/A
+    rationale: "T2_1 adds Go functions only; no files placed in any bundle directory."
+  - id: cg-004
+    result: N/A
+    rationale: "T2_1 does not add or modify any DaemonSet YAML or network policy files."
+  - id: cg-005
+    result: PASS
+    rationale: >
+      T2_1 adds withSecretRotationHook as a DaemonSetHookFunc, NOT as a static asset or
+      a new WithXxx CSIControllerSet hook. It will be registered via WithCSIDriverNodeService
+      variadic args (T2_2). This correctly follows the hook pattern — no new static resource
+      controller created, no ConditionalStaticResourcesController hook added.
+
+constitution_compliance:
+  no_new_controller: PASS  # Hook wires into existing WithCSIDriverNodeService chain
+  no_hardcoded_values: PASS  # All args derive from ClusterCSIDriver spec or documented defaults
+  ca_bundle_hook_preserved: PASS  # WithCABundleDaemonSetHook not modified
+  idempotent: PASS  # removeRotationArgs + switch ensures idempotency
+
+deviation:
+  from_tasks_md: "tasks.md says use operatorClient.GetOperatorState() to read DriverConfig.SecretsStore"
+  actual: "GetOperatorState() only returns *operatorv1.OperatorSpec (base type, no DriverConfig). Using cache.GenericLister from dynamicInformers.ForResource(gvr).Lister() instead."
+  impact: "Signature change: withSecretRotationHook(lister cache.GenericLister) instead of withSecretRotationHook(operatorClient v1helpers.OperatorClientWithFinalizers)"
+  adr_needed: true

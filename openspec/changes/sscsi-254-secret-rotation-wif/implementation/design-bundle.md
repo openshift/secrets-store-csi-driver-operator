@@ -1,24 +1,24 @@
-# Design Bundle — SSCSI-254 / T0_2
-**Task:** T0_2 — Verify new API types compile and confirm field name (A-001)
-**Phase:** 0 — Upstream Vendor Update
+# Design Bundle — SSCSI-254 / T2_1
+**Task:** T2_1 — Implement `withSecretRotationHook`
+**Phase:** 2 — DaemonSet Rotation Hook
 **Prepared:** 2026-07-03
 
 ---
 
-## Constitution Excerpts
-- No type invention: read vendored types as-is; document findings verbatim.
-- Verification tasks produce documentation only; no source edits permitted.
+## Key Findings from Discovery Tasks
 
----
+- **T0_2**: `SecretRotationType` is a discriminator: `"None"` | `"Custom"`. The interval field is `Custom.RotationPollIntervalSeconds int32` (under `CustomSecretRotation`).
+- **T1_1**: `DaemonSetHookFunc` signature: `func(*opv1.OperatorSpec, *appsv1.DaemonSet) error`.
+- The `*opv1.OperatorSpec` parameter does NOT include `DriverConfig.SecretsStore` — confirmed by inspecting `getOperatorSpecFromUnstructured`.
+- **T1_2**: `csi-driver` is the target container name (from `node.yaml` line 31).
 
-## Task Payload — T0_2 (verification only)
+## Deviation from tasks.md
 
-**Objective:** Confirm vendored `SecretsStoreCSIDriverConfigSpec` compiles, resolve A-001 (field name), confirm Q4 CEL immutability, verify A-002 RBAC.
+`tasks.md` says: "Read the full `ClusterCSIDriverSpec` via `operatorClient.GetOperatorState()`". This is **incorrect** — `GetOperatorState()` wraps only `*operatorv1.OperatorSpec` (base type), which does not include `DriverConfig`. The correct approach is to pass `dynamicInformers.ForResource(gvr).Lister()` (a `cache.GenericLister`) and convert the returned `*unstructured.Unstructured` to `*opv1.ClusterCSIDriver`.
 
-**Non-goals:** Do not modify any vendored or operator source files.
+## Task Payload
 
-**Acceptance criteria (all must be met):**
-1. Exact field path for rotation interval recorded (A-001)
-2. CEL immutability for `tokenRequests.type` confirmed (Q4)
-3. RBAC for `csidrivers` create/get/list/watch/update/delete confirmed (A-002)
-4. `make build` green (inherited from T0_1)
+- Add `withSecretRotationHook(lister cache.GenericLister) DaemonSetHookFunc` to `starter.go`
+- Add helper `applySecretRotationArgs` and `removeRotationArgs`
+- Add constants: `csiDriverContainerName`, `enableSecretRotationArg`, `rotationPollIntervalArg`, `defaultRotationPollInterval`
+- T2_2 will wire it into the `WithCSIDriverNodeService` call

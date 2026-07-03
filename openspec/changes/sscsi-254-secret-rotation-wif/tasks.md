@@ -96,7 +96,7 @@ graph TD
 2. - [x] T0_2 — Verify new API types compile and confirm field name (A-001)
 3. - [x] T1_1 — Discovery: verify ApplyCSIDriver signature and operator RBAC (Q2 + A-002)
 4. - [x] T1_2 — Discovery: verify staticresourcecontroller dynamic asset function support (Q3)
-5. T2_1 — Implement `withSecretRotationHook` (parallel-safe with T1_1, T1_2 after T0_2)
+5. - [x] T2_1 — Implement `withSecretRotationHook` (parallel-safe with T1_1, T1_2 after T0_2)
 6. T1_3 — Implement `csiDriverAssetFunc` (after T1_1, T1_2)
 7. T2_2 — Register rotation hook in `WithCSIDriverNodeService` (after T2_1)
 8. T1_4 — Rewire `ConditionalStaticResourcesController` for dynamic CSIDriver (after T1_3)
