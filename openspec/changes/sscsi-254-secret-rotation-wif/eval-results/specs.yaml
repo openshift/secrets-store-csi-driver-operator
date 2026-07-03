@@ -1,0 +1,8 @@
+artifact_id: specs
+artifact_path: openspec/changes/sscsi-254-secret-rotation-wif/specs.md
+stage: specs
+gate: skip
+scored_at: "2026-07-03T13:17:00Z"
+overall_pass: true
+refinement_applied: false
+note: "Gate is 'skip' — no stage eval cases; quality assessment only"
