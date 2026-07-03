@@ -1,0 +1,66 @@
+stage: code-generation
+task: T0_2
+oape_command: manual-discovery  # read-only verification task
+generated: "2026-07-03"
+
+score_pct: 100
+cases_pass: 5
+cases_total: 5
+refinement_rounds: 0
+
+eval_cases:
+  - id: cg-001
+    result: N/A
+    rationale: "T0_2 is a verification-only task; no YAML manifests generated."
+
+  - id: cg-002
+    result: N/A
+    rationale: "T0_2 is a verification-only task; no QuickStart YAML generated."
+
+  - id: cg-003
+    result: N/A
+    rationale: "T0_2 is a verification-only task; no files placed anywhere."
+
+  - id: cg-004
+    result: N/A
+    rationale: "T0_2 is a verification-only task; no DaemonSet or NP files modified."
+
+  - id: cg-005
+    result: N/A
+    rationale: "T0_2 is a verification-only task; no starter.go or static assets modified."
+
+findings:
+  A001_rotation_field:
+    status: RESOLVED
+    path: "spec.driverConfig.secretsStore.secretRotation.custom.rotationPollIntervalSeconds"
+    type: "int32"
+    go_type: "CustomSecretRotation.RotationPollIntervalSeconds int32"
+    notes: "Field is nested under Custom variant of SecretsStoreSecretRotation; PR #2906 may rename to minimumRefreshAge"
+
+  A001_type_discriminator:
+    status: NEW_FINDING
+    field: "SecretsStoreSecretRotation.Type"
+    values:
+      - "None: rotation disabled (default)"
+      - "Custom: rotation enabled; custom.rotationPollIntervalSeconds configures interval"
+    go_types:
+      - "SecretRotationNone SecretRotationType = \"None\""
+      - "SecretRotationCustom SecretRotationType = \"Custom\""
+
+  Q4_CEL_immutability:
+    status: CONFIRMED
+    rule: "oldSelf.spec.?driverConfig.?secretsStore.?tokenRequests.?type.orValue('') != 'Managed' || self.spec.?driverConfig.?secretsStore.?tokenRequests.?type.orValue('') == 'Managed'"
+    message: "tokenRequests type cannot be changed from Managed"
+    location: "types_csi_cluster_driver.go line 26 (ClusterCSIDriver object-level XValidation)"
+
+  A002_rbac:
+    status: CONFIRMED
+    csidrivers_verbs: [create, get, list, watch, update, delete]
+    source: "config/manifests/stable/secrets-store-csi-driver-operator.clusterserviceversion.yaml line 277"
+    clustercsidrivers_verbs: [get, list, watch, update, patch]
+    notes: "Full create+update+delete on storage.k8s.io/csidrivers; sufficient for ApplyCSIDriver"
+
+  token_requests_structure:
+    type: "SecretsStoreTokenRequests"
+    discriminator: "Type TokenRequestsType  // Managed | Unmanaged"
+    managed_path: "managed.audiences *[]SecretsStoreTokenRequest{Audience *string, ExpirationSeconds int32}"
