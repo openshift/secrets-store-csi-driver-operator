@@ -1,0 +1,38 @@
+meta:
+  task_id: T3_1
+  task_title: "Unit tests — csiDriverAssetFunc"
+  change: sscsi-254-secret-rotation-wif
+  oape_command: api-implement
+  scored_at: "2026-07-06"
+  score_pct: 100
+  cases_evaluated: 5
+  cases_passed: 1
+  cases_na: 4
+  refinement_rounds: 0
+
+results:
+  - id: cg-001
+    verdict: N/A
+    reason: "Task is api-implement, not manual. No OLM bundle YAML generated."
+
+  - id: cg-002
+    verdict: N/A
+    reason: "Task is api-implement, not manual."
+
+  - id: cg-003
+    verdict: N/A
+    reason: "Task is api-implement, not manual."
+
+  - id: cg-004
+    verdict: N/A
+    reason: "Task is api-implement. No DaemonSet label or NetworkPolicy file changed."
+
+  - id: cg-005
+    verdict: PASS
+    reason: >
+      TestCSIDriverAssetFunc uses standard testing + t.Fatalf (no testify/gomega).
+      Tests are table-driven following TestGetOperatorSyncState pattern.
+      makeTestLister uses cache.NewIndexer + cache.NewGenericLister (real cache, not stub).
+      All 7 sub-tests pass: Managed/2audiences, Managed/empty, Unmanaged, RotationCustom,
+      RotationNone, driverTypeNotSecretsStore, clusterCSIDriverNotFound.
+      FR-004, FR-005, FR-008 coverage confirmed.

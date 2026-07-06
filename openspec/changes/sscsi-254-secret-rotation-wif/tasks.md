@@ -100,7 +100,7 @@ graph TD
 6. - [x] T1_3 — Implement `csiDriverAssetFunc` (after T1_1, T1_2)
 7. - [x] T2_2 — Register rotation hook in `WithCSIDriverNodeService` (after T2_1)
 8. - [x] T1_4 — Rewire `ConditionalStaticResourcesController` for dynamic CSIDriver (after T1_3)
-9. T3_1 — Unit tests for `csiDriverAssetFunc`
+9. - [x] T3_1 — Unit tests for `csiDriverAssetFunc`
 10. T3_2 — Unit tests for `withSecretRotationHook`
 11. T3_3 — Nil-path and upgrade-safety unit tests (after T3_1 + T3_2)
 12. T4_1 — E2E: rotation enable/disable/custom interval
