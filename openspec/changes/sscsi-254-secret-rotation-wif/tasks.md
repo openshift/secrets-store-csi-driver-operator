@@ -102,7 +102,7 @@ graph TD
 8. - [x] T1_4 — Rewire `ConditionalStaticResourcesController` for dynamic CSIDriver (after T1_3)
 9. - [x] T3_1 — Unit tests for `csiDriverAssetFunc`
 10. - [x] T3_2 — Unit tests for `withSecretRotationHook`
-11. T3_3 — Nil-path and upgrade-safety unit tests (after T3_1 + T3_2)
+11. - [x] T3_3 — Nil-path and upgrade-safety unit tests (after T3_1 + T3_2)
 12. T4_1 — E2E: rotation enable/disable/custom interval
 13. T4_2 — E2E: WIF audiences, upgrade no-op, tokenRequests preservation
 14. T4_3 — E2E + manual: API immutability (Managed→Unmanaged rejection)
