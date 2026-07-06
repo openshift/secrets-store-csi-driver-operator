@@ -105,7 +105,6 @@ func RunOperator(ctx context.Context, controllerConfig *controllercmd.Controller
 		replaceNamespaceFunc(operatorNamespace),
 		[]string{
 			"node_sa.yaml",
-			"csidriver.yaml",
 			"cabundle_cm.yaml",
 			"rbac/privileged_role.yaml",
 			"rbac/node_privileged_binding.yaml",
@@ -113,6 +112,19 @@ func RunOperator(ctx context.Context, controllerConfig *controllercmd.Controller
 			"rbac/secretproviderclasses_binding.yaml",
 			"network-policy/allow-ingress-to-metrics-operand.yaml",
 		},
+		func() bool {
+			return getOperatorSyncState(operatorClient) == opv1.Managed
+		},
+		func() bool {
+			return getOperatorSyncState(operatorClient) == opv1.Removed
+		},
+	).WithConditionalStaticResourcesController(
+		"SecretsStoreCSIDriverController",
+		kubeClient,
+		dynamicClient,
+		kubeInformersForNamespaces,
+		csiDriverAssetFunc(clusterCSIDriverLister, operatorNamespace),
+		[]string{"csidriver.yaml"},
 		func() bool {
 			return getOperatorSyncState(operatorClient) == opv1.Managed
 		},

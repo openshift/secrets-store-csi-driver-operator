@@ -1,0 +1,38 @@
+meta:
+  task_id: T1_4
+  task_title: "Rewire ConditionalStaticResourcesController for dynamic CSIDriver"
+  change: sscsi-254-secret-rotation-wif
+  oape_command: api-implement
+  scored_at: "2026-07-06"
+  score_pct: 100
+  cases_evaluated: 5
+  cases_passed: 1
+  cases_na: 4
+  refinement_rounds: 0
+
+results:
+  - id: cg-001
+    verdict: N/A
+    reason: "Task is api-implement, not manual. No OLM bundle YAML generated."
+
+  - id: cg-002
+    verdict: N/A
+    reason: "Task is api-implement, not manual. No ConsoleQuickStart YAML generated."
+
+  - id: cg-003
+    verdict: N/A
+    reason: "Task is api-implement, not manual. No demo/ output placement needed."
+
+  - id: cg-004
+    verdict: N/A
+    reason: "Task is api-implement. No DaemonSet label or NetworkPolicy file created in T1_4."
+
+  - id: cg-005
+    verdict: PASS
+    reason: >
+      csidriver.yaml removed from SecretsStoreConditionalStaticResourcesController file list.
+      A new chained WithConditionalStaticResourcesController("SecretsStoreCSIDriverController")
+      manages only ["csidriver.yaml"] using csiDriverAssetFunc. Same Managed/Removed predicates
+      applied — CSIDriver lifecycle preserved. No new standalone controller or CSIControllerSet
+      hook method created; the chained pattern follows existing static resources controller
+      conventions (network-policy, rbac entries all remain in original controller).
