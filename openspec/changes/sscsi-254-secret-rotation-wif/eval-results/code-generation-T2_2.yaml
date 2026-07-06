@@ -1,0 +1,36 @@
+meta:
+  task_id: T2_2
+  task_title: "Register rotation hook in WithCSIDriverNodeService"
+  change: sscsi-254-secret-rotation-wif
+  oape_command: api-implement
+  scored_at: "2026-07-06"
+  score_pct: 100
+  cases_evaluated: 5
+  cases_passed: 1
+  cases_na: 4
+  refinement_rounds: 0
+
+results:
+  - id: cg-001
+    verdict: N/A
+    reason: "Task is api-implement, not manual. No OLM bundle YAML generated."
+
+  - id: cg-002
+    verdict: N/A
+    reason: "Task is api-implement, not manual. No ConsoleQuickStart YAML generated."
+
+  - id: cg-003
+    verdict: N/A
+    reason: "Task is api-implement, not manual. No demo/ output placement needed."
+
+  - id: cg-004
+    verdict: N/A
+    reason: "Task is api-implement. No DaemonSet label or NetworkPolicy file created in T2_2."
+
+  - id: cg-005
+    verdict: PASS
+    reason: >
+      withSecretRotationHook appended to existing WithCSIDriverNodeService variadic hooks list —
+      no new CSIControllerSet hook method created. clusterCSIDriverLister sourced from
+      dynamicInformers.ForResource(gvr).Lister(), reusing the already-constructed
+      DynamicSharedInformerFactory. WithCABundleDaemonSetHook remains first (Principle VIII).

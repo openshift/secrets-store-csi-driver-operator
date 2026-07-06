@@ -89,6 +89,8 @@ func RunOperator(ctx context.Context, controllerConfig *controllercmd.Controller
 		return err
 	}
 
+	clusterCSIDriverLister := dynamicInformers.ForResource(gvr).Lister()
+
 	csiControllerSet := csicontrollerset.NewCSIControllerSet(
 		operatorClient,
 		controllerConfig.EventRecorder,
@@ -132,6 +134,7 @@ func RunOperator(ctx context.Context, controllerConfig *controllercmd.Controller
 			trustedCAConfigMap,
 			configMapInformer,
 		),
+		withSecretRotationHook(clusterCSIDriverLister),
 	)
 
 	klog.Info("Starting the informers")
