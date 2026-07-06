@@ -2,10 +2,13 @@ package operator
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	opv1 "github.com/openshift/api/operator/v1"
 	"github.com/openshift/library-go/pkg/operator/v1helpers"
+	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -280,6 +283,240 @@ func TestCSIDriverAssetFunc(t *testing.T) {
 			default: // wantTokenRequestsLen == 0
 				if len(got.Spec.TokenRequests) != 0 {
 					t.Errorf("TokenRequests length: want 0, got %d", len(got.Spec.TokenRequests))
+				}
+			}
+		})
+	}
+}
+
+// hasExactArg returns true if args contains the exact string want.
+func hasExactArg(args []string, want string) bool {
+	for _, a := range args {
+		if a == want {
+			return true
+		}
+	}
+	return false
+}
+
+// hasArgPrefix returns true if any arg in args starts with prefix.
+func hasArgPrefix(args []string, prefix string) bool {
+	for _, a := range args {
+		if strings.HasPrefix(a, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+// makeDaemonSet returns a minimal DaemonSet with a single container named csiDriverContainerName.
+func makeDaemonSet(args []string) *appsv1.DaemonSet {
+	return &appsv1.DaemonSet{
+		Spec: appsv1.DaemonSetSpec{
+			Template: corev1.PodTemplateSpec{
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{
+						{Name: csiDriverContainerName, Args: args},
+					},
+				},
+			},
+		},
+	}
+}
+
+func TestWithSecretRotationHook(t *testing.T) {
+	// baseArgs represents the stable args unrelated to rotation.
+	baseArgs := []string{"--endpoint=unix:///csi/csi.sock", "--nodeid=test-node"}
+
+	cases := []struct {
+		name             string
+		clusterCSIDriver *opv1.ClusterCSIDriver
+		preArgs          []string // rotation args pre-loaded into the container (idempotency tests)
+		wantExactArgs    []string // each must appear verbatim in result args
+		wantAbsent       []string // no result arg may have any of these as a prefix
+		wantErrNonNil    bool
+	}{
+		{
+			// FR-001: None → --enable-secret-rotation=false; no poll interval
+			name: "SecretRotationNone/disableRotation",
+			clusterCSIDriver: &opv1.ClusterCSIDriver{
+				ObjectMeta: metav1.ObjectMeta{Name: providerName},
+				Spec: opv1.ClusterCSIDriverSpec{
+					DriverConfig: opv1.CSIDriverConfigSpec{
+						DriverType: opv1.SecretsStoreDriverType,
+						SecretsStore: opv1.SecretsStoreCSIDriverConfigSpec{
+							SecretRotation: opv1.SecretsStoreSecretRotation{Type: opv1.SecretRotationNone},
+						},
+					},
+				},
+			},
+			wantExactArgs: []string{enableSecretRotationArg + "=false"},
+			wantAbsent:    []string{rotationPollIntervalArg},
+		},
+		{
+			// FR-002: Custom 300s → 5m0s
+			name: "SecretRotationCustom/300s/5m0s",
+			clusterCSIDriver: &opv1.ClusterCSIDriver{
+				ObjectMeta: metav1.ObjectMeta{Name: providerName},
+				Spec: opv1.ClusterCSIDriverSpec{
+					DriverConfig: opv1.CSIDriverConfigSpec{
+						DriverType: opv1.SecretsStoreDriverType,
+						SecretsStore: opv1.SecretsStoreCSIDriverConfigSpec{
+							SecretRotation: opv1.SecretsStoreSecretRotation{
+								Type:   opv1.SecretRotationCustom,
+								Custom: opv1.CustomSecretRotation{RotationPollIntervalSeconds: 300},
+							},
+						},
+					},
+				},
+			},
+			wantExactArgs: []string{
+				enableSecretRotationArg + "=true",
+				rotationPollIntervalArg + "=5m0s",
+			},
+		},
+		{
+			// FR-002: Custom 120s → 2m0s
+			name: "SecretRotationCustom/120s/2m0s",
+			clusterCSIDriver: &opv1.ClusterCSIDriver{
+				ObjectMeta: metav1.ObjectMeta{Name: providerName},
+				Spec: opv1.ClusterCSIDriverSpec{
+					DriverConfig: opv1.CSIDriverConfigSpec{
+						DriverType: opv1.SecretsStoreDriverType,
+						SecretsStore: opv1.SecretsStoreCSIDriverConfigSpec{
+							SecretRotation: opv1.SecretsStoreSecretRotation{
+								Type:   opv1.SecretRotationCustom,
+								Custom: opv1.CustomSecretRotation{RotationPollIntervalSeconds: 120},
+							},
+						},
+					},
+				},
+			},
+			wantExactArgs: []string{
+				enableSecretRotationArg + "=true",
+				rotationPollIntervalArg + "=2m0s",
+			},
+		},
+		{
+			// FR-002: Custom 1s → 1s
+			name: "SecretRotationCustom/1s/1s",
+			clusterCSIDriver: &opv1.ClusterCSIDriver{
+				ObjectMeta: metav1.ObjectMeta{Name: providerName},
+				Spec: opv1.ClusterCSIDriverSpec{
+					DriverConfig: opv1.CSIDriverConfigSpec{
+						DriverType: opv1.SecretsStoreDriverType,
+						SecretsStore: opv1.SecretsStoreCSIDriverConfigSpec{
+							SecretRotation: opv1.SecretsStoreSecretRotation{
+								Type:   opv1.SecretRotationCustom,
+								Custom: opv1.CustomSecretRotation{RotationPollIntervalSeconds: 1},
+							},
+						},
+					},
+				},
+			},
+			wantExactArgs: []string{
+				enableSecretRotationArg + "=true",
+				rotationPollIntervalArg + "=1s",
+			},
+		},
+		{
+			// FR-003: Custom with interval=0 (omitted) → default 2m
+			name: "SecretRotationCustom/0s/default2m",
+			clusterCSIDriver: &opv1.ClusterCSIDriver{
+				ObjectMeta: metav1.ObjectMeta{Name: providerName},
+				Spec: opv1.ClusterCSIDriverSpec{
+					DriverConfig: opv1.CSIDriverConfigSpec{
+						DriverType: opv1.SecretsStoreDriverType,
+						SecretsStore: opv1.SecretsStoreCSIDriverConfigSpec{
+							SecretRotation: opv1.SecretsStoreSecretRotation{
+								Type: opv1.SecretRotationCustom,
+								// RotationPollIntervalSeconds omitted (zero)
+							},
+						},
+					},
+				},
+			},
+			wantExactArgs: []string{
+				enableSecretRotationArg + "=true",
+				rotationPollIntervalArg + "=" + defaultRotationPollInterval,
+			},
+		},
+		{
+			// FR-003: driverType ≠ SecretsStore → no mutation (upgrade no-op)
+			name: "driverTypeNotSecretsStore/noMutation",
+			clusterCSIDriver: &opv1.ClusterCSIDriver{
+				ObjectMeta: metav1.ObjectMeta{Name: providerName},
+				Spec: opv1.ClusterCSIDriverSpec{
+					DriverConfig: opv1.CSIDriverConfigSpec{DriverType: opv1.AWSDriverType},
+				},
+			},
+			wantAbsent: []string{enableSecretRotationArg, rotationPollIntervalArg},
+		},
+		{
+			// FR-003: ClusterCSIDriver absent → static baseline preserved
+			name:             "clusterCSIDriverNotFound/noMutation",
+			clusterCSIDriver: nil,
+			wantAbsent:       []string{enableSecretRotationArg, rotationPollIntervalArg},
+		},
+		{
+			// FR-007: pre-existing rotation args are stripped before new values applied
+			name: "idempotency/preExistingArgsReplaced",
+			preArgs: []string{
+				enableSecretRotationArg + "=true",
+				rotationPollIntervalArg + "=5m0s",
+			},
+			clusterCSIDriver: &opv1.ClusterCSIDriver{
+				ObjectMeta: metav1.ObjectMeta{Name: providerName},
+				Spec: opv1.ClusterCSIDriverSpec{
+					DriverConfig: opv1.CSIDriverConfigSpec{
+						DriverType: opv1.SecretsStoreDriverType,
+						SecretsStore: opv1.SecretsStoreCSIDriverConfigSpec{
+							SecretRotation: opv1.SecretsStoreSecretRotation{Type: opv1.SecretRotationNone},
+						},
+					},
+				},
+			},
+			wantExactArgs: []string{enableSecretRotationArg + "=false"},
+			wantAbsent:    []string{rotationPollIntervalArg},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			lister := makeTestLister(t, tc.clusterCSIDriver)
+			hook := withSecretRotationHook(lister)
+
+			initialArgs := append(append([]string{}, baseArgs...), tc.preArgs...)
+			ds := makeDaemonSet(initialArgs)
+
+			err := hook(nil, ds)
+			if tc.wantErrNonNil {
+				if err == nil {
+					t.Fatalf("hook: expected non-nil error, got nil")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("hook: unexpected error: %v", err)
+			}
+
+			containerArgs := ds.Spec.Template.Spec.Containers[0].Args
+
+			// Verify base args are not corrupted.
+			for _, base := range baseArgs {
+				if !hasExactArg(containerArgs, base) {
+					t.Errorf("base arg %q lost after hook", base)
+				}
+			}
+
+			for _, want := range tc.wantExactArgs {
+				if !hasExactArg(containerArgs, want) {
+					t.Errorf("want arg %q not found in %v", want, containerArgs)
+				}
+			}
+			for _, prefix := range tc.wantAbsent {
+				if hasArgPrefix(containerArgs, prefix) {
+					t.Errorf("arg with prefix %q must be absent, found in %v", prefix, containerArgs)
 				}
 			}
 		})

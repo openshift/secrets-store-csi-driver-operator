@@ -1,0 +1,37 @@
+meta:
+  task_id: T3_2
+  task_title: "Unit tests — withSecretRotationHook"
+  change: sscsi-254-secret-rotation-wif
+  oape_command: api-implement
+  scored_at: "2026-07-06"
+  score_pct: 100
+  cases_evaluated: 5
+  cases_passed: 1
+  cases_na: 4
+  refinement_rounds: 0
+
+results:
+  - id: cg-001
+    verdict: N/A
+    reason: "Task is api-implement, not manual."
+
+  - id: cg-002
+    verdict: N/A
+    reason: "Task is api-implement, not manual."
+
+  - id: cg-003
+    verdict: N/A
+    reason: "Task is api-implement, not manual."
+
+  - id: cg-004
+    verdict: N/A
+    reason: "Task is api-implement, not manual."
+
+  - id: cg-005
+    verdict: PASS
+    reason: >
+      TestWithSecretRotationHook uses standard testing + t.Fatalf (no testify/gomega).
+      Table-driven following TestGetOperatorSyncState pattern.
+      9/9 sub-tests pass: None, Custom/300s, Custom/120s, Custom/1s, Custom/0s-default,
+      driverTypeNotSecretsStore, notFound, idempotency.
+      Duration conversion verified for 1s/2m0s/5m0s. Base args preserved. FR-001/002/003/007 covered.
