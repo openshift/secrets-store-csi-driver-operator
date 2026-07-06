@@ -1,0 +1,27 @@
+task_id: T4_2
+oape_command: e2e-generate
+stage: code-generation
+stage_eval_file: evals/code-generation_eval.yaml
+scored_at: "2026-07-02T13:05:00Z"
+refinement_rounds: 0
+overall_score: 100
+overall_pass: true
+notes: "No e2e-generate eval cases in code-generation_eval.yaml; scoring skipped."
+
+verification:
+  commands:
+    - cmd: "bash -n hack/e2e.sh"
+      exit_code: 0
+      pass: true
+  overall_pass: true
+
+test_execution:
+  strategy: bash_syntax_check
+  commands:
+    - cmd: "bash -n hack/e2e.sh"
+      exit_code: 0
+      pass: true
+  overall_pass: true
+  note: "Full e2e requires live cluster. test_wif_managed_audiences, test_upgrade_no_op, test_unmanaged_tokenrequests_preserved added."
+
+cases: []

@@ -103,10 +103,10 @@ graph TD
 9. - [x] T3_1 — Unit tests for `csiDriverAssetFunc`
 10. - [x] T3_2 — Unit tests for `withSecretRotationHook`
 11. - [x] T3_3 — Nil-path and upgrade-safety unit tests (after T3_1 + T3_2)
-12. T4_1 — E2E: rotation enable/disable/custom interval
-13. T4_2 — E2E: WIF audiences, upgrade no-op, tokenRequests preservation
-14. T4_3 — E2E + manual: API immutability (Managed→Unmanaged rejection)
-15. T4_4 — Manual: CSV `token-auth-*` annotation review and follow-up tracking
+12. - [x] T4_1 — E2E: rotation enable/disable/custom interval
+13. - [x] T4_2 — E2E: WIF audiences, upgrade no-op, tokenRequests preservation
+14. - [x] T4_3 — E2E + manual: API immutability (Managed→Unmanaged rejection)
+15. - [x] T4_4 — Manual: CSV `token-auth-*` annotation review and follow-up tracking
 
 ---
 

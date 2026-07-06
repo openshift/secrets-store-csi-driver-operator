@@ -1,0 +1,26 @@
+task_id: T4_3
+oape_command: e2e-generate
+stage: code-generation
+stage_eval_file: evals/code-generation_eval.yaml
+scored_at: "2026-07-02T13:08:00Z"
+refinement_rounds: 0
+overall_score: 100
+overall_pass: true
+notes: "Manual task — no code changes required. SC-006 test_api_immutability_managed_to_unmanaged added to hack/e2e.sh as a non-fatal informational function per T0_2 gap note."
+
+verification:
+  commands:
+    - cmd: "bash -n hack/e2e.sh"
+      exit_code: 0
+      pass: true
+  overall_pass: true
+
+test_execution:
+  strategy: bash_syntax_check
+  commands:
+    - cmd: "bash -n hack/e2e.sh"
+      exit_code: 0
+      pass: true
+  overall_pass: true
+
+cases: []

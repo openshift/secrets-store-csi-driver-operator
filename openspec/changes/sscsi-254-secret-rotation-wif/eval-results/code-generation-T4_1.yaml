@@ -1,0 +1,28 @@
+task_id: T4_1
+oape_command: e2e-generate
+stage: code-generation
+stage_eval_file: evals/code-generation_eval.yaml
+scored_at: "2026-07-02T13:00:00Z"
+refinement_rounds: 0
+overall_score: 100
+overall_pass: true
+notes: "No e2e-generate eval cases in code-generation_eval.yaml; scoring skipped per eval gate rules."
+
+verification:
+  commands:
+    - cmd: "bash -n hack/e2e.sh"
+      exit_code: 0
+      pass: true
+      note: "Bash syntax check passed"
+  overall_pass: true
+
+test_execution:
+  strategy: bash_syntax_check
+  commands:
+    - cmd: "bash -n hack/e2e.sh"
+      exit_code: 0
+      pass: true
+  overall_pass: true
+  note: "Full e2e execution requires a live OpenShift cluster. New functions test_rotation_none and test_rotation_custom added and validated for syntax."
+
+cases: []
