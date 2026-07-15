@@ -87,12 +87,29 @@ collect() {
     fi
     echo "Found operator pod: ${pod}"
 
-    echo "Sending SIGTERM to flush coverage data (container will restart)..."
-    oc exec -n "${NAMESPACE}" "${pod}" -- /bin/sh -c 'kill -TERM 1' 2>/dev/null || true
+    local restart_count
+    restart_count=$(oc get pod "${pod}" -n "${NAMESPACE}" \
+        -o jsonpath='{.status.containerStatuses[0].restartCount}')
 
-    echo "Waiting for container to restart and become ready..."
-    sleep 5
-    oc wait pod "${pod}" -n "${NAMESPACE}" --for=condition=Ready --timeout=120s
+    echo "Sending SIGTERM to flush coverage data (container will restart)..."
+    oc exec -n "${NAMESPACE}" "${pod}" -- /bin/sh -c 'kill -TERM 1'
+
+    echo "Waiting for container restart count to increment..."
+    local expected_count=$((restart_count + 1))
+    if oc wait "pod/${pod}" \
+        -n "${NAMESPACE}" \
+        --for="jsonpath={.status.containerStatuses[0].restartCount}=${expected_count}" \
+        --timeout=120s; then
+        local current
+        current=$(oc get pod "${pod}" -n "${NAMESPACE}" \
+            -o jsonpath='{.status.containerStatuses[0].restartCount}')
+        echo "Container restarted (count: ${current})"
+    else
+        echo "Timed out waiting for container restart"
+        return 1
+    fi
+
+    oc wait pod/"${pod}" --for=condition=Ready -n "${NAMESPACE}" --timeout=120s
 
     echo "Copying coverage data from the restarted container..."
     mkdir -p "${coverage_dir}"
