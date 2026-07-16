@@ -19,12 +19,18 @@ spec:
   operatorLogLevel: Trace
 EOF
 
+# Apply SecretProviderClass CRDs before starting the operator:
+```sh
+oc apply -f config/manifests/stable/secrets-store.csi.x-k8s.io_secretproviderclasses.yaml \
+         -f config/manifests/stable/secrets-store.csi.x-k8s.io_secretproviderclasspodstatuses.yaml
+```
+
 # Build the operator
 make
 
 # Set the environment variables
 export OPERATOR_NAME=secrets-store-csi-driver-operator
-export DRIVER_IMAGE=registry.k8s.io/csi-secrets-store/driver:v1.3.3
+export DRIVER_IMAGE=registry.k8s.io/csi-secrets-store/driver:v1.6.0
 export NODE_DRIVER_REGISTRAR_IMAGE=quay.io/openshift/origin-csi-node-driver-registrar:latest
 export LIVENESS_PROBE_IMAGE=quay.io/openshift/origin-csi-livenessprobe:latest
 
