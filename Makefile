@@ -66,12 +66,16 @@ clean: clean-yq
 
 GO_TEST_PACKAGES :=./pkg/... ./cmd/...
 
-# Run e2e tests. Requires openshift-tests in $PATH.
-#
-# Example:
-#   make test-e2e
+# RUN_IRREVERSIBLE_E2E=true also runs specs that permanently switch
+# tokenRequests.type to "Managed" on the target cluster, with no way back.
+# Defaults to true since CI always runs against a fresh cluster;
+# pass RUN_IRREVERSIBLE_E2E=false to skip these specs (e.g. against a
+# persistent local/dev cluster).
+RUN_IRREVERSIBLE_E2E ?= true
+
 test-e2e:
 	hack/e2e.sh
+	RUN_IRREVERSIBLE_E2E=$(RUN_IRREVERSIBLE_E2E) go test ./test/e2e -v -timeout 60m -args -ginkgo.vv -ginkgo.poll-progress-after=30s -ginkgo.poll-progress-interval=30s
 
 .PHONY: test-e2e
 
