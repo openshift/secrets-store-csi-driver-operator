@@ -92,5 +92,5 @@ kubeInformersForNamespaces := v1helpers.NewKubeInformersForNamespaces(
 
 - [pkg/operator/starter.go:45](../../pkg/operator/starter.go) - Informer creation
 - [library-go v1helpers.NewKubeInformersForNamespaces](https://github.com/openshift/library-go/blob/master/pkg/operator/v1helpers/helpers.go)
-- [Performance Guidelines](../../docs/performance-guidelines.md) - Component-specific performance patterns
+- [Performance Guidelines](../guidelines/performance-guidelines.md) - Component-specific performance patterns
 - [Platform Performance Guidelines](https://github.com/openshift/enhancements/tree/master/ai-docs/platform/performance/) - Cross-repo informer best practices

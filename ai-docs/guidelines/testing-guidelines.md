@@ -72,3 +72,10 @@
 4. Use `library-go` fakes (`v1helpers.NewFakeOperatorClientWithObjectMeta`) for operator client mocking.
 5. If the test needs new assets, add the YAML to `assets/` and update the embed directive if a new subdirectory is introduced.
 6. Run `make verify && make test-unit` locally before submitting a PR.
+
+## References
+
+- [SECRETS_STORE_TESTING.md](../SECRETS_STORE_TESTING.md) — Full testing guide, including component-specific test scenarios
+- [Component Architecture](../architecture/components.md) — What to test
+- [Error Handling Guidelines](./error-handling-guidelines.md) — Error path testing conventions
+- [Platform Testing Practices](https://github.com/openshift/enhancements/tree/master/ai-docs/platform/testing/) — Cross-repo patterns

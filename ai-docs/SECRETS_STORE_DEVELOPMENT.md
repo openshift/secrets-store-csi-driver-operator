@@ -54,7 +54,7 @@ make test-unit      # Run unit tests (./pkg/... ./cmd/...)
 **Coverage**: Tests in `pkg/operator/starter_test.go` cover `getOperatorSyncState` logic (management state transitions).
 
 **Patterns**:
-- Table-driven tests (see [testing-guidelines.md](../docs/testing-guidelines.md))
+- Table-driven tests (see [testing-guidelines.md](./guidelines/testing-guidelines.md))
 - library-go fakes (`v1helpers.NewFakeOperatorClientWithObjectMeta`)
 - No third-party mocking frameworks
 
@@ -346,7 +346,7 @@ oc rollout status daemonset/secrets-store-csi-driver-node -n openshift-cluster-c
 ## References
 
 - [Component Architecture](./architecture/components.md)
-- [Testing Guidelines](../docs/testing-guidelines.md)
-- [Error Handling Guidelines](../docs/error-handling-guidelines.md)
-- [Security Guidelines](../docs/security-guidelines.md)
+- [Testing Guidelines](./guidelines/testing-guidelines.md)
+- [Error Handling Guidelines](./guidelines/error-handling-guidelines.md)
+- [Security Guidelines](./guidelines/security-guidelines.md)
 - [Platform Operator Patterns](https://github.com/openshift/enhancements/tree/master/ai-docs/platform/operators/)

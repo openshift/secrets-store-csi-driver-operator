@@ -12,14 +12,14 @@ This document catalogs design documentation for the Secrets Store CSI Driver Ope
 
 ## Local Design Documents
 
-### Component Guidelines (docs/)
+### Component Guidelines (ai-docs/guidelines/)
 
 The following guidelines are component-specific operational conventions, not enhancement proposals:
 
-- **[Security Guidelines](../../docs/security-guidelines.md)** - RBAC principles, SCC usage, container security contexts, TLS/cert management, host path security, image reference patterns
-- **[Performance Guidelines](../../docs/performance-guidelines.md)** - Informer scoping, resource requests/limits, metrics, liveness probes, leader election, static resource management, DaemonSet update strategy
-- **[Error Handling Guidelines](../../docs/error-handling-guidelines.md)** - Error wrapping, klog usage, operator status conditions, Sync return patterns, fatal error policy, test error handling
-- **[Testing Guidelines](../../docs/testing-guidelines.md)** - Table-driven test patterns, test organization, library-go fakes, assertion style, Makefile targets, E2E testing
+- **[Security Guidelines](../guidelines/security-guidelines.md)** - RBAC principles, SCC usage, container security contexts, TLS/cert management, host path security, image reference patterns
+- **[Performance Guidelines](../guidelines/performance-guidelines.md)** - Informer scoping, resource requests/limits, metrics, liveness probes, leader election, static resource management, DaemonSet update strategy
+- **[Error Handling Guidelines](../guidelines/error-handling-guidelines.md)** - Error wrapping, klog usage, operator status conditions, Sync return patterns, fatal error policy, test error handling
+- **[Testing Guidelines](../guidelines/testing-guidelines.md)** - Table-driven test patterns, test organization, library-go fakes, assertion style, Makefile targets, E2E testing
 
 **Note**: These are operational conventions for code contributions, not architectural decisions. For architectural decisions, see [ADRs](../decisions/).
 
