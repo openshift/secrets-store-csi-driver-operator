@@ -54,3 +54,9 @@
 - Validate operator configuration at startup before entering the reconciliation loop.
 - The `RunOperator` function in `pkg/operator/starter.go` validates required clients and informers before starting controllers.
 - Fail fast with a clear error message if required configuration is missing, rather than entering a degraded reconciliation loop.
+
+## References
+
+- [Component Architecture](../architecture/components.md) — Verified error handling patterns in `pkg/operator/starter.go`
+- [ADR-0002: Panic on Missing Embedded Assets](../decisions/adr-0002-embedded-assets-panic-policy.md)
+- [Platform ADRs](https://github.com/openshift/enhancements/tree/master/ai-docs/platform/decisions/) — Cross-repo error handling patterns

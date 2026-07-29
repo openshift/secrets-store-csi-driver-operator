@@ -39,6 +39,7 @@ ai-docs/
 │   └── components.md                 # Repo layout, controller set, apply patterns
 ├── decisions/                        # Component ADRs
 ├── exec-plans/                       # Feature planning
+├── guidelines/                       # Security, performance, error-handling, testing conventions
 ├── references/
 │   ├── ecosystem.md                  # Links to Platform
 │   └── enhancements.md               # Enhancement proposals catalog

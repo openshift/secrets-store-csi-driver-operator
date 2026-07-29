@@ -109,13 +109,13 @@ RunOperator(ctx, controllerConfig)
 
 The operator uses `library-go/pkg/operator/csi/csicontrollerset` to compose 5 sub-controllers via method chaining. **All controllers share the same operator client and event recorder.**
 
-| Controller | Purpose | File List | Sync Condition |
-|------------|---------|-----------|----------------|
-| **LogLevelController** | Syncs log level from ClusterCSIDriver spec to operator | N/A | Always |
-| **ManagementStateController** | Handles Managed/Unmanaged/Removed lifecycle | N/A | Always |
+| Controller                               | Purpose                                                                       | File List                    | Sync Condition                                 |
+| ---------------------------------------- | ----------------------------------------------------------------------------- | ---------------------------- | ---------------------------------------------- |
+| **LogLevelController**                   | Syncs log level from ClusterCSIDriver spec to operator                        | N/A                          | Always                                         |
+| **ManagementStateController**            | Handles Managed/Unmanaged/Removed lifecycle                                   | N/A                          | Always                                         |
 | **ConditionalStaticResourcesController** | Reconciles static YAML assets (RBAC, SA, CSIDriver, ConfigMap, NetworkPolicy) | See "Static Resources" below | `syncPredicate()` returns true (Managed state) |
-| **CSIConfigObserverController** | Observes cluster config (infrastructure, proxy, apiserver) | N/A | Always |
-| **CSIDriverNodeService** | Manages DaemonSet with CA bundle injection | `node.yaml` | Managed state (implicit in library-go) |
+| **CSIConfigObserverController**          | Observes cluster config (infrastructure, proxy, apiserver)                    | N/A                          | Always                                         |
+| **CSIDriverNodeService**                 | Manages DaemonSet with CA bundle injection                                    | `node.yaml`                  | Managed state (implicit in library-go)         |
 
 ### Static Resources (ConditionalStaticResourcesController)
 
@@ -436,15 +436,6 @@ if err != nil {
 **Why**: Crash-loops the operator pod → cluster-wide CSI driver outage.
 
 **Correct**: Return errors from Sync methods. Library-go framework retries automatically. Panic is acceptable ONLY for build-time bugs (missing embedded assets).
-
-## SME Review Recommended
-
-The following areas were not fully discoverable from code and may require SME input:
-
-1. **ClusterCSIDriver migration path** - How do users transition from legacy CSI driver installations (if any) to the operator-managed deployment?
-2. **Provider installation recipes** - Detailed steps for deploying provider binaries (Azure, GCP, Vault) alongside the operator.
-3. **Failure mode behavior** - What happens if the operator pod crashes mid-reconciliation? Are there unmanaged orphaned resources?
-4. **OLM upgrade paths** - CSV `replaces` chain behavior and upgrade testing expectations.
 
 ---
 

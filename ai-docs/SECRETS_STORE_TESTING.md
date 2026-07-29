@@ -381,7 +381,7 @@ go test -run TestGetOperatorSyncState/should_return_removed ./pkg/operator/  # R
 
 ## References
 
-- [Testing Guidelines](../docs/testing-guidelines.md) - Component-specific test conventions
+- [Testing Guidelines](./guidelines/testing-guidelines.md) - Component-specific test conventions
 - [Component Architecture](./architecture/components.md) - What to test
-- [Error Handling Guidelines](../docs/error-handling-guidelines.md) - Error path testing
+- [Error Handling Guidelines](./guidelines/error-handling-guidelines.md) - Error path testing
 - [Platform Testing Practices](https://github.com/openshift/enhancements/tree/master/ai-docs/platform/testing/) - Cross-repo patterns

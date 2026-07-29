@@ -56,3 +56,8 @@
 - Metrics are served on container port 8095, exposed via a `Service` with TLS (auto-provisioned cert).
 - The CSI driver endpoint listens on a Unix socket at `/csi/csi.sock` — not a TCP port. Prefer Unix sockets for driver endpoints to avoid network exposure.
 - Liveness probes use HTTP on port 9808, served by the `csi-liveness-probe` sidecar container.
+
+## References
+
+- [Component Architecture](../architecture/components.md)
+- [Platform Security Practices](https://github.com/openshift/enhancements/tree/master/ai-docs/platform/security/) — Cross-repo RBAC, SCC, and TLS patterns
