@@ -101,3 +101,10 @@ hack/e2e-coverage.sh collect
 # View HTML report
 go tool cover -html=coverage-e2e.out
 ```
+
+# Updating vendored CRDs
+
+This copies the `secretproviderclasses` and `secretproviderclasspodstatuses` CRDs from a [secrets-store-csi-driver](https://github.com/kubernetes-sigs/secrets-store-csi-driver) release tag into `config/manifests/stable/`:
+```shell
+./hack/update-crds.sh v1.6.0
+```
