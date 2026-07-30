@@ -26,6 +26,7 @@ import (
 	"github.com/openshift/library-go/pkg/operator/resource/resourceapply"
 	"github.com/openshift/library-go/pkg/operator/v1helpers"
 	"github.com/openshift/secrets-store-csi-driver-operator/assets"
+	sscsitls "github.com/openshift/secrets-store-csi-driver-operator/pkg/tls"
 )
 
 const (
@@ -37,7 +38,12 @@ const (
 	resync             = 20 * time.Minute
 )
 
-func RunOperator(ctx context.Context, controllerConfig *controllercmd.ControllerContext) error {
+func RunOperator(
+	ctx context.Context,
+	controllerConfig *controllercmd.ControllerContext,
+	resolvedTLS sscsitls.ResolvedProfile,
+	triggerRestart context.CancelFunc,
+) error {
 	operatorNamespace := controllerConfig.OperatorNamespace
 
 	// Create core clientset and informers
@@ -46,8 +52,23 @@ func RunOperator(ctx context.Context, controllerConfig *controllercmd.Controller
 	configMapInformer := kubeInformersForNamespaces.InformersFor(operatorNamespace).Core().V1().ConfigMaps()
 
 	// Create config clientset and informer. This is used to get the cluster ID
+	// and to watch apiserver TLS profile / adherence changes.
 	configClient := configclient.NewForConfigOrDie(rest.AddUserAgent(controllerConfig.KubeConfig, operatorName))
 	configInformers := configinformers.NewSharedInformerFactory(configClient, resync)
+
+	tlsWatcher := &sscsitls.SecurityProfileWatcher{
+		InitialTLSProfileSpec:     resolvedTLS.Spec,
+		InitialTLSAdherencePolicy: resolvedTLS.Adherence,
+		OnChange: func() {
+			klog.Info("TLS security profile or adherence changed; requesting graceful operator restart")
+			if triggerRestart != nil {
+				triggerRestart()
+			}
+		},
+	}
+	if err := tlsWatcher.Start(configInformers.Config().V1().APIServers()); err != nil {
+		return fmt.Errorf("failed to start TLS security profile watcher: %w", err)
+	}
 
 	// Create GenericOperatorclient. This is used by the library-go controllers created down below
 	gvr := opv1.SchemeGroupVersion.WithResource("clustercsidrivers")

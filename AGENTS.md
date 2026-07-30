@@ -18,9 +18,10 @@ The following documents cover domain-specific conventions in depth. Read these b
 ## Repository Layout
 
 ```
-cmd/secrets-store-csi-driver-operator/main.go  -- Entry point; wires cobra command + library-go controller
-pkg/operator/starter.go                        -- RunOperator: creates clients, informers, CSI controller set
+cmd/secrets-store-csi-driver-operator/main.go  -- Entry point; Controllercmd start with cluster TLS ServingInfo
+pkg/operator/starter.go                        -- RunOperator: clients, informers, CSI controller set, TLS watcher
 pkg/operator/starter_test.go                   -- Unit tests for operator sync state logic
+pkg/tls/                                       -- Cluster TLS profile resolve + SecurityProfileWatcher
 pkg/version/version.go                         -- Build version info via ldflags; registers Prometheus gauge
 pkg/dependencymagnet/dependencymagnet.go       -- Build-tag-guarded import to keep build-machinery-go vendored
 assets/                                        -- Embedded YAML manifests (go:embed)

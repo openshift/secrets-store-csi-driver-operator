@@ -30,9 +30,12 @@
 ## TLS and Certificate Management
 
 - The operator creates a `Service` for metrics/healthz endpoints with `service.beta.openshift.io/serving-cert-secret-name` annotation — OpenShift's service-ca-operator auto-generates and rotates the TLS certificate.
+- Operator metrics are served over HTTPS on `:8443` via Controllercmd. Cipher suites and minimum TLS version come from `apiserver.config.openshift.io/cluster` when `spec.tlsAdherence` requires honoring the cluster profile (`StrictAllComponents`, or any unknown value). Empty / `LegacyAdheringComponentsOnly` keeps Controllercmd defaults for upgrade compatibility. See `pkg/tls/`.
+- A `SecurityProfileWatcher` watches both `tlsSecurityProfile` and `tlsAdherence` and restarts the operator process when either changes.
+- Do not check the `TLSAdherence` feature gate in operator code — an unset `tlsAdherence` field unmarshals as empty and is treated as Legacy.
 - CA bundles are injected via ConfigMaps annotated with `config.openshift.io/inject-trusted-cabundle: "true"` (see `assets/cabundle_cm.yaml`).
 - Prefer annotation-based auto-provisioning over hard-coding certificates or keys in manifests.
-- The operator mounts the CA bundle and serving cert into the operand as volumes — see `assets/node.yaml` for the volume/volumeMount pattern.
+- The operator mounts the CA bundle into the operand as a volume — see `assets/node.yaml` for the volume/volumeMount pattern.
 
 ## Image References
 
@@ -53,6 +56,6 @@
 
 ## Network and Port Security
 
-- Metrics are served on container port 8095, exposed via a `Service` with TLS (auto-provisioned cert).
-- The CSI driver endpoint listens on a Unix socket at `/csi/csi.sock` — not a TCP port. Prefer Unix sockets for driver endpoints to avoid network exposure.
+- Operator metrics are served on container port 8443 over HTTPS (service-CA cert + cluster TLS profile when adherence requires it).
+- Operand (CSI driver) metrics are served on container port 8095 over plaintext HTTP; the CSI gRPC endpoint listens on a Unix socket at `/csi/csi.sock`. Prefer Unix sockets for driver endpoints to avoid network exposure.
 - Liveness probes use HTTP on port 9808, served by the `csi-liveness-probe` sidecar container.

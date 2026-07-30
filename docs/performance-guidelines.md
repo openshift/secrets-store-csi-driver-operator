@@ -23,8 +23,8 @@
 
 ## Metrics and Monitoring
 
-- The CSI driver exposes Prometheus metrics on port 8095, configured via the `--metrics-addr=:8095` flag in the driver container.
-- Metrics are served behind TLS using auto-provisioned certificates from OpenShift's service-ca.
+- The CSI driver exposes Prometheus metrics on port 8095 over plaintext HTTP (`--metrics-addr=:8095`).
+- The operator metrics endpoint is HTTPS on `:8443` (service-CA cert). When cluster `tlsAdherence` requires it, cipher suites and min TLS version follow `apiserver.config.openshift.io/cluster`.
 - When adding new metrics, register them in the driver startup and ensure they have bounded cardinality — avoid labels with unbounded values (pod names, UIDs).
 
 ## Liveness and Readiness Probes

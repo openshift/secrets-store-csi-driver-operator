@@ -1,0 +1,103 @@
+package tls
+
+import (
+	"reflect"
+	"sync"
+
+	configv1 "github.com/openshift/api/config/v1"
+	configinformersv1 "github.com/openshift/client-go/config/informers/externalversions/config/v1"
+	"k8s.io/client-go/tools/cache"
+	"k8s.io/klog/v2"
+)
+
+// SecurityProfileWatcher watches apiserver.config.openshift.io/cluster for
+// tlsSecurityProfile and tlsAdherence changes and invokes OnChange so the
+// operator can restart and pick up the new configuration.
+//
+// Initial values must be seeded from the profile that was applied (or skipped)
+// at process start, including when adherence is Legacy, so Strict↔Legacy
+// transitions still trigger a restart.
+type SecurityProfileWatcher struct {
+	mu sync.Mutex
+
+	InitialTLSProfileSpec     configv1.TLSProfileSpec
+	InitialTLSAdherencePolicy configv1.TLSAdherencePolicy
+
+	// OnChange is invoked when either the resolved TLS profile spec or the
+	// adherence policy differs from the seeded initial values. Typically this
+	// cancels the operator context to trigger a graceful restart.
+	OnChange func()
+}
+
+// Start registers an informer handler for the cluster APIServer. The informer
+// factory must be started by the caller after Start returns.
+func (w *SecurityProfileWatcher) Start(apiServerInformer configinformersv1.APIServerInformer) error {
+	_, err := apiServerInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc: func(obj interface{}) {
+			apiServer, ok := obj.(*configv1.APIServer)
+			if !ok || apiServer.Name != APIServerName {
+				return
+			}
+			w.handle(apiServer)
+		},
+		UpdateFunc: func(_, newObj interface{}) {
+			apiServer, ok := newObj.(*configv1.APIServer)
+			if !ok || apiServer.Name != APIServerName {
+				return
+			}
+			w.handle(apiServer)
+		},
+		// Deletion of the singleton is unexpected; treat as Intermediate/empty and
+		// still compare so a later recreation can be detected after restart.
+		DeleteFunc: func(obj interface{}) {
+			apiServer, ok := obj.(*configv1.APIServer)
+			if !ok {
+				tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
+				if !ok {
+					return
+				}
+				apiServer, ok = tombstone.Obj.(*configv1.APIServer)
+				if !ok {
+					return
+				}
+			}
+			if apiServer.Name != APIServerName {
+				return
+			}
+			w.handle(&configv1.APIServer{})
+		},
+	})
+	return err
+}
+
+func (w *SecurityProfileWatcher) handle(apiServer *configv1.APIServer) {
+	resolved, err := ResolveFromAPIServer(apiServer)
+	if err != nil {
+		klog.Errorf("TLS security profile watcher: failed to resolve APIServer TLS settings: %v", err)
+		return
+	}
+
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	profileChanged := !reflect.DeepEqual(w.InitialTLSProfileSpec, resolved.Spec)
+	adherenceChanged := w.InitialTLSAdherencePolicy != resolved.Adherence
+	if !profileChanged && !adherenceChanged {
+		return
+	}
+
+	if profileChanged {
+		klog.Infof("TLS security profile changed from %#v to %#v; triggering operator restart",
+			w.InitialTLSProfileSpec, resolved.Spec)
+		w.InitialTLSProfileSpec = resolved.Spec
+	}
+	if adherenceChanged {
+		klog.Infof("TLS adherence policy changed from %q to %q; triggering operator restart",
+			w.InitialTLSAdherencePolicy, resolved.Adherence)
+		w.InitialTLSAdherencePolicy = resolved.Adherence
+	}
+
+	if w.OnChange != nil {
+		w.OnChange()
+	}
+}
