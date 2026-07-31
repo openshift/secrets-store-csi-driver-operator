@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"time"
 
 	operatorv1alpha1 "github.com/openshift/api/operator/v1alpha1"
 	configclient "github.com/openshift/client-go/config/clientset/versioned"
@@ -75,9 +76,19 @@ func newCommandWithTLSCustomization(cmdcfg *controllercmd.ControllerCommandConfi
 
 		serviceability.StartProfiler()
 
-		kubeConfigFile, _ := cmd.Flags().GetString("kubeconfig")
-		namespace, _ := cmd.Flags().GetString("namespace")
-		bindAddress, _ := cmd.Flags().GetString("listen")
+		// basicFlags on cmdcfg is unexported; fail fast if a flag is missing/renamed.
+		kubeConfigFile, err := cmd.Flags().GetString("kubeconfig")
+		if err != nil {
+			klog.Fatal(err)
+		}
+		namespace, err := cmd.Flags().GetString("namespace")
+		if err != nil {
+			klog.Fatal(err)
+		}
+		bindAddress, err := cmd.Flags().GetString("listen")
+		if err != nil {
+			klog.Fatal(err)
+		}
 
 		if err := startControllerWithTLSCustomization(ctx, cmdcfg, kubeConfigFile, namespace, bindAddress); err != nil {
 			klog.Fatal(err)
@@ -173,7 +184,10 @@ func applyClusterTLSProfile(
 		return sscsitls.ResolvedProfile{}, fmt.Errorf("failed to create config client: %w", err)
 	}
 
-	resolved, err := sscsitls.FetchAndResolve(ctx, configClient.ConfigV1())
+	fetchCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
+	resolved, err := sscsitls.FetchAndResolve(fetchCtx, configClient.ConfigV1())
 	if err != nil {
 		return sscsitls.ResolvedProfile{}, err
 	}
