@@ -70,6 +70,15 @@ func RunOperator(ctx context.Context, controllerConfig *controllercmd.Controller
 		return err
 	}
 
+	// ClusterCSIDriver lister to read driverConfig.secretsStore configuration.
+	// This reuses the dynamic informer/cache above (same GVR) instead of
+	// standing up a second, independent informer/watch for the same
+	// singleton ClusterCSIDriver object.
+	clusterCSIDriverLister := newDynamicClusterCSIDriverLister(dynamicInformers.ForResource(gvr).Lister())
+
+	// csiDriverInformer is the storage.k8s.io/v1 CSIDriver informer
+	csiDriverInformer := kubeInformersForNamespaces.InformersFor("").Storage().V1().CSIDrivers()
+
 	csiControllerSet := csicontrollerset.NewCSIControllerSet(
 		operatorClient,
 		controllerConfig.EventRecorder,
@@ -81,7 +90,12 @@ func RunOperator(ctx context.Context, controllerConfig *controllercmd.Controller
 		kubeClient,
 		dynamicClient,
 		kubeInformersForNamespaces,
-		replaceNamespaceFunc(operatorNamespace),
+		withSecretsStoreCSIDriverAsset(
+			replaceNamespaceFunc(operatorNamespace),
+			clusterCSIDriverLister,
+			csiDriverInformer.Lister(),
+			providerName,
+		),
 		[]string{
 			"node_sa.yaml",
 			"csidriver.yaml",
@@ -112,6 +126,10 @@ func RunOperator(ctx context.Context, controllerConfig *controllercmd.Controller
 			operatorNamespace,
 			trustedCAConfigMap,
 			configMapInformer,
+		),
+		withSecretRotationDaemonSetHook(
+			clusterCSIDriverLister,
+			providerName,
 		),
 	)
 
