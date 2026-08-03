@@ -80,7 +80,7 @@ Conditional resources (RBAC, ServiceAccount, CSIDriver, ConfigMap, NetworkPolicy
 
 ## References
 
-- [pkg/operator/starter.go:77](../../pkg/operator/starter.go) - `removable=true` registration
-- [pkg/operator/starter.go:150-169](../../pkg/operator/starter.go) - `getOperatorSyncState()` implementation
+- [pkg/operator/starter.go:77](../../../pkg/operator/starter.go) - `removable=true` registration
+- [pkg/operator/starter.go:150-169](../../../pkg/operator/starter.go) - `getOperatorSyncState()` implementation
 - [Management State Controller Documentation](https://github.com/openshift/library-go/tree/master/pkg/operator/managementstate)
 - [Platform ADRs](https://github.com/openshift/enhancements/tree/master/ai-docs/platform/decisions/) for cross-repo operator patterns

@@ -108,6 +108,6 @@ Platform-wide architectural decisions (examples):
 
 ---
 
-**Note**: These links point to Platform ecosystem hub documentation. Component-specific patterns and decisions are documented in the `ai-docs/` directory of this repository.
+**Note**: These links point to Platform ecosystem hub documentation. Component-specific patterns and decisions are documented in the `harness-evals/harness-docs/` directory of this repository.
 
 **Last Updated**: 2026-07-29
