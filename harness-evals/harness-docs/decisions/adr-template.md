@@ -9,7 +9,7 @@
 
 What is the component-specific issue or situation we're addressing?
 
-**Scope**: This ADR is component-specific. For cross-repo decisions, see [Platform ADRs](https://github.com/openshift/enhancements/tree/master/ai-docs/platform/decisions/).
+**Scope**: This ADR is component-specific. For cross-repo decisions, see [Platform ADRs](https://github.com/openshift/enhancements/tree/master/ai-docs/).
 
 ## Decision
 
@@ -51,4 +51,4 @@ Why did we choose this approach for this component?
 - Related component docs
 - Related ADRs
 - External sources
-- [Platform ADRs](https://github.com/openshift/enhancements/tree/master/ai-docs/platform/decisions/) for cross-repo decisions
+- [Platform ADRs](https://github.com/openshift/enhancements/tree/master/ai-docs/) for cross-repo decisions

@@ -59,4 +59,4 @@
 
 - [Component Architecture](../architecture/components.md) — Verified error handling patterns in `pkg/operator/starter.go`
 - [ADR-0002: Panic on Missing Embedded Assets](../decisions/adr-0002-embedded-assets-panic-policy.md)
-- [Platform ADRs](https://github.com/openshift/enhancements/tree/master/ai-docs/platform/decisions/) — Cross-repo error handling patterns
+- [Platform ADRs](https://github.com/openshift/enhancements/tree/master/ai-docs/) — Cross-repo error handling patterns

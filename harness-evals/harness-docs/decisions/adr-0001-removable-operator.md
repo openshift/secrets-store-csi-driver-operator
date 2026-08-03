@@ -16,7 +16,7 @@ The operator must handle three management states:
 
 Additionally, when the ClusterCSIDriver CR is deleted (DeletionTimestamp set), the operator must clean up before allowing finalizer removal.
 
-**Scope**: This ADR is component-specific. For cross-repo operator lifecycle patterns, see [Platform ADRs](https://github.com/openshift/enhancements/tree/master/ai-docs/platform/decisions/).
+**Scope**: This ADR is component-specific. For cross-repo operator lifecycle patterns, see [Platform ADRs](https://github.com/openshift/enhancements/tree/master/ai-docs/).
 
 ## Decision
 
@@ -83,4 +83,4 @@ Conditional resources (RBAC, ServiceAccount, CSIDriver, ConfigMap, NetworkPolicy
 - [pkg/operator/starter.go:77](../../../pkg/operator/starter.go) - `removable=true` registration
 - [pkg/operator/starter.go:150-169](../../../pkg/operator/starter.go) - `getOperatorSyncState()` implementation
 - [Management State Controller Documentation](https://github.com/openshift/library-go/tree/master/pkg/operator/managementstate)
-- [Platform ADRs](https://github.com/openshift/enhancements/tree/master/ai-docs/platform/decisions/) for cross-repo operator patterns
+- [Platform ADRs](https://github.com/openshift/enhancements/tree/master/ai-docs/) for cross-repo operator patterns

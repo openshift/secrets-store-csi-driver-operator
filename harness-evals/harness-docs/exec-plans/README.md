@@ -12,7 +12,7 @@ exec-plans/
 
 ## Creating Execution Plans
 
-For guidance on creating and structuring execution plans, see the [Platform Exec-Plans Guide](https://github.com/openshift/enhancements/tree/master/ai-docs/platform/exec-plans/).
+For guidance on creating and structuring execution plans, see the [Platform Exec-Plans Guide](https://github.com/openshift/enhancements/tree/master/ai-docs/).
 
 ## Active Plans
 
@@ -31,6 +31,6 @@ When creating execution plans for this operator:
 
 ## References
 
-- [Platform Exec-Plans Guide](https://github.com/openshift/enhancements/tree/master/ai-docs/platform/exec-plans/)
+- [Platform Exec-Plans Guide](https://github.com/openshift/enhancements/tree/master/ai-docs/)
 - [Component Architecture](../architecture/components.md)
 - [Component Decisions](../decisions/)

@@ -18,7 +18,7 @@ The Secrets Store CSI Driver Operator needs:
 
 **Problem**: Using all-namespace informers would cache every Pod, ConfigMap, and Secret in the cluster → excessive memory usage and API load for resources the operator never uses.
 
-**Scope**: This ADR is component-specific. For cross-repo informer patterns, see [Platform Performance Guidelines](https://github.com/openshift/enhancements/tree/master/ai-docs/platform/performance/).
+**Scope**: This ADR is component-specific. For cross-repo informer patterns, see [Platform Performance Guidelines](https://github.com/openshift/enhancements/tree/master/ai-docs/).
 
 ## Decision
 
@@ -93,4 +93,4 @@ kubeInformersForNamespaces := v1helpers.NewKubeInformersForNamespaces(
 - [pkg/operator/starter.go:45](../../../pkg/operator/starter.go) - Informer creation
 - [library-go v1helpers.NewKubeInformersForNamespaces](https://github.com/openshift/library-go/blob/master/pkg/operator/v1helpers/helpers.go)
 - [Performance Guidelines](../guidelines/performance-guidelines.md) - Component-specific performance patterns
-- [Platform Performance Guidelines](https://github.com/openshift/enhancements/tree/master/ai-docs/platform/performance/) - Cross-repo informer best practices
+- [Platform Performance Guidelines](https://github.com/openshift/enhancements/tree/master/ai-docs/) - Cross-repo informer best practices

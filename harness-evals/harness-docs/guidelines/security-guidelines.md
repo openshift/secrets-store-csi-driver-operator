@@ -60,4 +60,4 @@
 ## References
 
 - [Component Architecture](../architecture/components.md)
-- [Platform Security Practices](https://github.com/openshift/enhancements/tree/master/ai-docs/platform/security/) — Cross-repo RBAC, SCC, and TLS patterns
+- [Platform Security Practices](https://github.com/openshift/enhancements/tree/master/ai-docs/) — Cross-repo RBAC, SCC, and TLS patterns

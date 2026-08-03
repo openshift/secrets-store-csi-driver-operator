@@ -2,7 +2,7 @@
 
 This guide covers testing practices specific to the Secrets Store CSI Driver Operator.
 
-**For generic OpenShift testing patterns**, see [Platform Testing Practices](https://github.com/openshift/enhancements/tree/master/ai-docs/platform/testing/).
+**For generic OpenShift testing patterns**, see [Platform Testing Practices](https://github.com/openshift/enhancements/tree/master/ai-docs/).
 
 ## Testing Strategy
 
@@ -384,4 +384,4 @@ go test -run TestGetOperatorSyncState/should_return_removed ./pkg/operator/  # R
 - [Testing Guidelines](./guidelines/testing-guidelines.md) - Component-specific test conventions
 - [Component Architecture](./architecture/components.md) - What to test
 - [Error Handling Guidelines](./guidelines/error-handling-guidelines.md) - Error path testing
-- [Platform Testing Practices](https://github.com/openshift/enhancements/tree/master/ai-docs/platform/testing/) - Cross-repo patterns
+- [Platform Testing Practices](https://github.com/openshift/enhancements/tree/master/ai-docs/) - Cross-repo patterns
