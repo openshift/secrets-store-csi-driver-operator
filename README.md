@@ -69,3 +69,35 @@ To build the `must-gather` image locally:
 REPO=quay.io/<user>/secrets-store-csi-mustgather:latest
 docker build -t ${REPO} -f Dockerfile.mustgather .
 ```
+
+# E2E Coverage
+
+The operator supports collecting E2E test coverage data and uploading it to [Codecov](https://app.codecov.io/github/openshift/secrets-store-csi-driver-operator).
+
+## How it works
+
+A separate `Dockerfile.coverage` builds the operator binary with Go's `-cover` flags. The coverage-instrumented binary behaves identically to production but tracks which lines are executed. After E2E tests, SIGTERM flushes coverage data to `/tmp/e2e-cover`, and the data is copied out for conversion and upload.
+
+In CI, the `hack/e2e-coverage.sh` script handles the full lifecycle:
+- `setup` -- patches the live CSV to swap in the coverage image and set `GOCOVERDIR`
+- `collect` -- sends SIGTERM, waits for container restart, copies coverage data, converts to a Go profile, and uploads to Codecov
+
+## Local usage
+
+```shell
+# Build and push the coverage image
+make docker-build-coverage COVERAGE_IMG=quay.io/<user>/secrets-store-csi-driver-operator:e2e-coverage
+make docker-push-coverage COVERAGE_IMG=quay.io/<user>/secrets-store-csi-driver-operator:e2e-coverage
+
+# After operator is deployed via OLM
+COVERAGE_IMAGE=quay.io/<user>/secrets-store-csi-driver-operator:e2e-coverage hack/e2e-coverage.sh setup
+
+# Run E2E tests
+make test-e2e
+
+# Collect coverage (optionally set CODECOV_TOKEN to upload)
+hack/e2e-coverage.sh collect
+
+# View HTML report
+go tool cover -html=coverage-e2e.out
+```
