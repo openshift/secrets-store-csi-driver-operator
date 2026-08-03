@@ -78,4 +78,4 @@
 - [SECRETS_STORE_TESTING.md](../SECRETS_STORE_TESTING.md) — Full testing guide, including component-specific test scenarios
 - [Component Architecture](../architecture/components.md) — What to test
 - [Error Handling Guidelines](./error-handling-guidelines.md) — Error path testing conventions
-- [Platform Testing Practices](https://github.com/openshift/enhancements/tree/master/ai-docs/platform/testing/) — Cross-repo patterns
+- [Platform Testing Practices](https://github.com/openshift/enhancements/tree/master/ai-docs/) — Cross-repo patterns

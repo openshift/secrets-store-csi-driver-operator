@@ -49,7 +49,7 @@ harness-evals/harness-docs/
 
 **Exec-Plans**: Use `active/` for new features. See Platform Exec-Plans Guide.
 
-**Platform Patterns**: [Operator](openshift/enhancements/ai-docs/platform/operators/) | [Testing](openshift/enhancements/ai-docs/platform/testing/) | [Security](openshift/enhancements/ai-docs/platform/security/)
+**Platform Patterns**: [Operator](https://github.com/openshift/enhancements/tree/master/ai-docs/platform/operator-patterns/) | [Testing & Security](https://github.com/openshift/enhancements/tree/master/ai-docs/) (dedicated sections not yet published upstream)
 
 **Retrieval Strategy**: For implementation tasks, always check `harness-evals/harness-docs/architecture/components.md` for verified patterns (apply methods, informer scoping, controller framework). For API questions, see `harness-evals/harness-docs/domain/`. For "why" questions, see `harness-evals/harness-docs/decisions/`.
 

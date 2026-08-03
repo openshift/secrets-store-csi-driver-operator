@@ -60,4 +60,4 @@
 
 - [Component Architecture](../architecture/components.md)
 - [ADR-0003: Namespace-Scoped Informers](../decisions/adr-0003-scoped-informers.md)
-- [Platform Performance Guidelines](https://github.com/openshift/enhancements/tree/master/ai-docs/platform/performance/) — Cross-repo performance patterns
+- [Platform Performance Guidelines](https://github.com/openshift/enhancements/tree/master/ai-docs/) — Cross-repo performance patterns

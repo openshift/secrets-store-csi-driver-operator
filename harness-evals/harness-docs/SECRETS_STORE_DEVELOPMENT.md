@@ -2,7 +2,7 @@
 
 This guide covers development workflows specific to the Secrets Store CSI Driver Operator.
 
-**For generic OpenShift operator patterns**, see [Platform Operator Patterns](https://github.com/openshift/enhancements/tree/master/ai-docs/platform/operators/).
+**For generic OpenShift operator patterns**, see [Platform Operator Patterns](https://github.com/openshift/enhancements/tree/master/ai-docs/platform/operator-patterns/).
 
 ## Prerequisites
 
@@ -349,4 +349,4 @@ oc rollout status daemonset/secrets-store-csi-driver-node -n openshift-cluster-c
 - [Testing Guidelines](./guidelines/testing-guidelines.md)
 - [Error Handling Guidelines](./guidelines/error-handling-guidelines.md)
 - [Security Guidelines](./guidelines/security-guidelines.md)
-- [Platform Operator Patterns](https://github.com/openshift/enhancements/tree/master/ai-docs/platform/operators/)
+- [Platform Operator Patterns](https://github.com/openshift/enhancements/tree/master/ai-docs/platform/operator-patterns/)

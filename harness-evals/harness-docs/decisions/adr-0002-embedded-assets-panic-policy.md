@@ -16,7 +16,7 @@ The operator embeds YAML manifests (DaemonSet, RBAC, ServiceAccount, etc.) into 
 
 The question: How should the operator handle missing embedded assets at runtime (failure mode #2)?
 
-**Scope**: This ADR is component-specific. For cross-repo error handling patterns, see [Platform ADRs](https://github.com/openshift/enhancements/tree/master/ai-docs/platform/decisions/).
+**Scope**: This ADR is component-specific. For cross-repo error handling patterns, see [Platform ADRs](https://github.com/openshift/enhancements/tree/master/ai-docs/).
 
 ## Decision
 
@@ -96,4 +96,4 @@ func replaceNamespaceFunc(namespace string) resourceapply.AssetFunc {
 - [pkg/operator/starter.go:131-139](../../../pkg/operator/starter.go) - `replaceNamespaceFunc` implementation
 - [assets/assets.go:7-13](../../../assets/assets.go) - `//go:embed` directive and `ReadFile`
 - [Error Handling Guidelines](../guidelines/error-handling-guidelines.md) - Component conventions for error vs panic
-- [Platform ADRs](https://github.com/openshift/enhancements/tree/master/ai-docs/platform/decisions/) for cross-repo error handling patterns
+- [Platform ADRs](https://github.com/openshift/enhancements/tree/master/ai-docs/) for cross-repo error handling patterns

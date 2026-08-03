@@ -4,7 +4,7 @@ This document links to generic OpenShift/Kubernetes patterns in the Platform eco
 
 ## Operator Patterns
 
-**Location**: [openshift/enhancements/ai-docs/platform/operators/](https://github.com/openshift/enhancements/tree/master/ai-docs/platform/operators/)
+**Location**: [openshift/enhancements/ai-docs/platform/operator-patterns/](https://github.com/openshift/enhancements/tree/master/ai-docs/platform/operator-patterns/)
 
 - **Controller Runtime**: Reconciliation loops, event handling, client patterns
 - **Status Conditions**: Available, Progressing, Degraded condition semantics
@@ -19,7 +19,7 @@ This document links to generic OpenShift/Kubernetes patterns in the Platform eco
 
 ## Testing Practices
 
-**Location**: [openshift/enhancements/ai-docs/platform/testing/](https://github.com/openshift/enhancements/tree/master/ai-docs/platform/testing/)
+**Location**: [openshift/enhancements/ai-docs/](https://github.com/openshift/enhancements/tree/master/ai-docs/) (a dedicated testing-practices section is not yet published upstream)
 
 - **Test Pyramid**: Unit > Integration > E2E ratio
 - **E2E Framework**: OpenShift E2E test patterns
@@ -32,7 +32,7 @@ This document links to generic OpenShift/Kubernetes patterns in the Platform eco
 
 ## Security Practices
 
-**Location**: [openshift/enhancements/ai-docs/platform/security/](https://github.com/openshift/enhancements/tree/master/ai-docs/platform/security/)
+**Location**: [openshift/enhancements/ai-docs/](https://github.com/openshift/enhancements/tree/master/ai-docs/) (a dedicated security-practices section is not yet published upstream)
 
 - **RBAC Guidelines**: Role and ClusterRole design
 - **SCC (Security Context Constraints)**: OpenShift security policies
@@ -45,7 +45,7 @@ This document links to generic OpenShift/Kubernetes patterns in the Platform eco
 
 ## Reliability Practices
 
-**Location**: [openshift/enhancements/ai-docs/platform/reliability/](https://github.com/openshift/enhancements/tree/master/ai-docs/platform/reliability/)
+**Location**: [openshift/enhancements/ai-docs/](https://github.com/openshift/enhancements/tree/master/ai-docs/) (a dedicated reliability-practices section is not yet published upstream)
 
 - **SLO Framework**: Service Level Objectives
 - **Observability**: Metrics, logging, tracing patterns
@@ -58,7 +58,7 @@ This document links to generic OpenShift/Kubernetes patterns in the Platform eco
 
 ## Kubernetes Fundamentals
 
-**Location**: [openshift/enhancements/ai-docs/platform/kubernetes/](https://github.com/openshift/enhancements/tree/master/ai-docs/platform/kubernetes/)
+**Location**: [openshift/enhancements/ai-docs/domain/kubernetes/](https://github.com/openshift/enhancements/tree/master/ai-docs/domain/kubernetes/)
 
 - **CSI (Container Storage Interface)**: CSI driver architecture and lifecycle
 - **DaemonSet**: Node-level workload patterns
@@ -71,7 +71,7 @@ This document links to generic OpenShift/Kubernetes patterns in the Platform eco
 
 ## OpenShift Fundamentals
 
-**Location**: [openshift/enhancements/ai-docs/platform/openshift/](https://github.com/openshift/enhancements/tree/master/ai-docs/platform/openshift/)
+**Location**: [openshift/enhancements/ai-docs/domain/openshift/](https://github.com/openshift/enhancements/tree/master/ai-docs/domain/openshift/)
 
 - **ClusterCSIDriver**: OpenShift CSI driver lifecycle API
 - **OLM (Operator Lifecycle Manager)**: Operator packaging and versioning
@@ -84,7 +84,7 @@ This document links to generic OpenShift/Kubernetes patterns in the Platform eco
 
 ## Cross-Repository ADRs
 
-**Location**: [openshift/enhancements/ai-docs/platform/decisions/](https://github.com/openshift/enhancements/tree/master/ai-docs/platform/decisions/)
+**Location**: [openshift/enhancements/ai-docs/](https://github.com/openshift/enhancements/tree/master/ai-docs/) (a dedicated cross-repo decisions/ADR section is not yet published upstream)
 
 Platform-wide architectural decisions (examples):
 - **etcd Backend**: Kubernetes state storage
