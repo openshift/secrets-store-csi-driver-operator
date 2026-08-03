@@ -6,10 +6,10 @@ This guide covers testing practices specific to the Secrets Store CSI Driver Ope
 
 ## Testing Strategy
 
-The operator follows a standard test pyramid:
-- **Unit tests** (~60%): Fast, isolated, no external dependencies
-- **Integration tests** (~30%): Currently minimal (future: test operator + fake Kubernetes API)
-- **E2E tests** (~10%): Full cluster deployment, real resources
+The operator's test suite consists of:
+- **Unit tests**: Fast, isolated, no external dependencies (`pkg/operator/starter_test.go`)
+- **Integration tests**: Not yet implemented (future: test operator + fake Kubernetes API)
+- **E2E tests**: Full cluster deployment, real resources (`hack/e2e.sh`)
 
 **Current state**: Primarily unit tests + E2E tests (integration tests are a future enhancement).
 
@@ -91,11 +91,11 @@ operatorClient := v1helpers.NewFakeOperatorClientWithObjectMeta(
 ### What to Test
 
 **Tested** (starter_test.go):
-- ✅ `getOperatorSyncState` management state transitions
+- ✅ `getOperatorSyncState` management state transitions (Managed, Unmanaged, Removed)
 - ✅ `DeletionTimestamp != nil` → `Removed` mapping
-- ✅ Error handling (API errors → `Unmanaged`)
 
 **Not tested** (future enhancement):
+- `GetOperatorState()` / `GetObjectMeta()` API error paths (both currently fall back to `Unmanaged`, but no test exercises the error branch)
 - Controller reconciliation loops (would require fake Kubernetes API server)
 - Asset loading (tested implicitly via E2E)
 - Image substitution (tested implicitly via E2E)
@@ -148,15 +148,17 @@ make test-e2e       # Runs hack/e2e.sh
 
 ### What E2E Tests Cover
 
-1. **Operator deployment** - OLM installs operator, pod starts
-2. **DaemonSet reconciliation** - DaemonSet created on all Linux nodes
-3. **Management state transitions**:
-   - `Managed` → DaemonSet running
-   - `Unmanaged` → Operator stops reconciling
-   - `Removed` → Resources deleted
-4. **Resource cleanup** - CR deletion triggers full cleanup
+`hack/e2e.sh` assumes the operator, CSI driver, and e2e-provider pods are **already deployed** on the target cluster (checked by `test_prechecks`). Given that precondition, the script:
 
-**Note**: E2E tests are **cluster-specific** (require proper OLM catalog, image pull credentials). Not expected to pass locally.
+1. **Creates a test namespace** with the SCC/PSA labels needed for a privileged e2e-provider and test pod
+2. **Creates a SecretProviderClass** referencing the `e2e-provider`
+3. **Creates a pod** that mounts the SecretProviderClass via a CSI volume
+4. **Verifies the mounted secret** by checking the pod's log output against the expected value
+5. **Cleans up** the test pod and namespace
+
+**Not covered by `hack/e2e.sh`**: Operator installation via OLM, DaemonSet reconciliation from scratch, `ManagementState` transitions, and CR-deletion cleanup are illustrated as manual/CI verification steps in [Component-Specific Test Scenarios](#component-specific-test-scenarios) below, not exercised by this script.
+
+**Note**: `hack/e2e.sh` requires the operator, CSI driver, and e2e-provider to already be running on the target cluster — it cannot run on a machine without such a cluster (CI or a properly configured local/dev cluster).
 
 ### E2E Test Structure
 
@@ -196,6 +198,8 @@ oc delete -f test-manifests/new-feature.yaml
 
 ## Component-Specific Test Scenarios
 
+**Note**: The "Manual/CI verification" snippets below are illustrative steps for verifying behavior on a live cluster — they are **not** part of `hack/e2e.sh`, which only covers the secret-mount scenario described in [What E2E Tests Cover](#what-e2e-tests-cover).
+
 ### Scenario: Management State Transitions
 
 **Goal**: Verify operator honors Managed/Unmanaged/Removed states.
@@ -211,7 +215,7 @@ oc delete -f test-manifests/new-feature.yaml
 }
 ```
 
-**E2E test** (hack/e2e.sh):
+**Manual/CI verification** (not part of `hack/e2e.sh`):
 ```bash
 # Set to Removed
 oc patch clustercsidrivers/secrets-store.csi.k8s.io --type=merge -p '{"spec":{"managementState":"Removed"}}'
@@ -239,14 +243,14 @@ oc wait --for=delete daemonset/secrets-store-csi-driver-node -n openshift-cluste
 }
 ```
 
-**E2E test** (hack/e2e.sh):
+**Manual/CI verification** (not part of `hack/e2e.sh`):
 ```bash
 # Delete CR
 oc delete clustercsidrivers/secrets-store.csi.k8s.io
 
 # Verify resources cleaned up
 oc wait --for=delete daemonset/secrets-store-csi-driver-node -n openshift-cluster-csi-drivers --timeout=2m
-oc get clusterrole secrets-store-privileged-role 2>&1 | grep "NotFound"  # Should fail
+! oc get clusterrole secrets-store-privileged-role >/dev/null 2>&1  # Expect non-zero exit: resource must be gone
 ```
 
 ### Scenario: Embedded Asset Loading
@@ -300,13 +304,13 @@ make verify         # go vet, gofmt, verify-deps
 make test-unit      # unit tests
 ```
 
-**Do NOT run `make test-e2e` locally** — it requires cluster-specific setup. Let CI handle it.
+**`make test-e2e` requires cluster-specific setup** (the operator, CSI driver, and e2e-provider must already be deployed) — it cannot run on a machine without a suitable authenticated OpenShift cluster. CI provisions one automatically; only run it locally against a cluster with those prerequisites already deployed.
 
 ## Test Coverage
 
 ### Current Coverage (pkg/operator/)
 
-- ✅ `getOperatorSyncState` - 100% (all branches covered by table-driven tests)
+- ✅ `getOperatorSyncState` - Managed/Unmanaged/Removed transitions and `DeletionTimestamp` handling are covered by table-driven tests; the `GetOperatorState()`/`GetObjectMeta()` API-error branches are not
 - ✅ `extractOperatorSpec` - Indirectly via E2E
 - ✅ `extractOperatorStatus` - Indirectly via E2E
 - ❌ `RunOperator` - Not unit-tested (controller setup is integration-tested in E2E)
@@ -315,7 +319,7 @@ make test-unit      # unit tests
 
 1. **Integration tests** - Test operator with fake Kubernetes API server (library-go provides test fixtures)
 2. **Asset substitution tests** - Unit test `replaceNamespaceFunc` (currently only E2E-tested)
-3. **Error handling paths** - Test API error scenarios (e.g., informer failures, apply failures)
+3. **Error handling paths** - Unit test the `GetOperatorState()`/`GetObjectMeta()` error branches in `getOperatorSyncState` (currently untested; both fall back to `Unmanaged`)
 
 ## Common Testing Mistakes
 
@@ -327,9 +331,9 @@ make test-unit      # unit tests
    ❌ Wrong: One test function per case (`TestManagedState`, `TestUnmanagedState`, ...)  
    ✅ Correct: One test function with table of cases (`TestGetOperatorSyncState`)
 
-3. **Using `t.Error` instead of `t.Fatal` for assertion failures**  
-   ❌ Wrong: `t.Errorf("expected %v, got %v", ...)` (test continues, confusing output)  
-   ✅ Correct: `t.Fatalf("expected %v, got %v", ...)` (stops immediately)
+3. **Choosing between `t.Error` and `t.Fatal` for assertion failures**  
+   Use `t.Fatalf` when the failure makes the rest of the test meaningless — this matches the existing `starter_test.go` pattern: `t.Fatalf("expected %v, got %v", ...)`.  
+   Use `t.Errorf` when subsequent assertions in the same test/subtest still provide useful information — it reports the failure without aborting the test.
 
 4. **Expecting E2E tests to pass locally**  
    ❌ Wrong: Debugging E2E failures locally without cluster setup  
@@ -362,15 +366,15 @@ go test -run TestGetOperatorSyncState/should_return_removed ./pkg/operator/  # R
 **Debug**:
 1. Check Prow job logs (link in GitHub PR checks)
 2. Look for operator pod logs:
-   ```
+   ```bash
    oc logs -n openshift-cluster-csi-drivers deployment/secrets-store-csi-driver-operator
    ```
 3. Check DaemonSet status:
-   ```
+   ```bash
    oc get daemonset -n openshift-cluster-csi-drivers secrets-store-csi-driver-node -o yaml
    ```
 4. Check ClusterCSIDriver status:
-   ```
+   ```bash
    oc get clustercsidrivers/secrets-store.csi.k8s.io -o yaml
    ```
 

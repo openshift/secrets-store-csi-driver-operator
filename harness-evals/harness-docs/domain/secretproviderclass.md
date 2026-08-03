@@ -90,7 +90,7 @@ parameters:
 2. Reads specified files from the mount
 3. Creates/updates a K8s Secret in the pod's namespace with the content
 
-**Use case**: Applications that require secrets in environment variables or need secrets available before the pod starts.
+**Use case**: A separate consumer — another pod, a Deployment using `envFrom`/`secretKeyRef`, or a TLS/Ingress resource — that reads the synced K8s Secret. Because the Secret is only created after this pod's CSI volume is mounted, it cannot bootstrap this same pod's own environment variables at startup; use it to expose the secret to a pre-existing Secret consumer or a different workload instead.
 
 **Lifecycle**: Secrets are synced when the volume is mounted and updated based on `rotation-poll-interval` (default: 2m, configured in DaemonSet).
 
@@ -101,7 +101,7 @@ parameters:
    - Calls the provider binary with `parameters`
    - Mounts provider-returned secrets as files
    - (Optional) Syncs to K8s Secrets if `secretObjects` is defined
-3. **Update**: Changes to SecretProviderClass do NOT affect existing mounts. Pods must be recreated to pick up changes.
+3. **Update**: Without secret auto-rotation (`--enable-secret-rotation=true`), changes to SecretProviderClass do NOT affect existing mounts — pods must be recreated to pick up changes. With auto-rotation enabled, changes to `parameters`/`secretObjects` are applied to existing mounts and synced Secrets on the next rotation interval (see [Rotation Support](#rotation-support)).
 4. **Deletion**: SecretProviderClass can be deleted when no pods reference it. The CSI driver does NOT enforce this; K8s finalizers may be added by users.
 
 ## Example: Azure Key Vault with Secret Sync
@@ -147,8 +147,9 @@ For each pod that mounts a SecretProviderClass, the CSI driver creates a `Secret
 ### RBAC Requirements
 
 The CSI driver node SA requires:
-- `get`, `list` on `secretproviderclasses` (read SecretProviderClass spec)
-- `create`, `update`, `patch`, `delete` on `secretproviderclasspodstatuses` (track mount state)
+- `get`, `list`, `watch` on `secretproviderclasses` (read SecretProviderClass spec)
+- `create`, `delete`, `get`, `list`, `patch`, `update`, `watch` on `secretproviderclasspodstatuses` (track mount state)
+- `get`, `patch`, `update` on `secretproviderclasspodstatuses/status`
 
 Configured in assets/rbac/secretproviderclasses_role.yaml.
 

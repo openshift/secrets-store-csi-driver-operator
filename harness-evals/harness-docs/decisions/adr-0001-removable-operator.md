@@ -20,11 +20,11 @@ Additionally, when the ClusterCSIDriver CR is deleted (DeletionTimestamp set), t
 
 ## Decision
 
-Mark the operator as **removable** (`removable=true` in `WithManagementStateController`) and treat both `ManagementState=Removed` AND `DeletionTimestamp != nil` as removal signals.
+Mark the operator as **removable** (pass `true` as the removable argument to `WithManagementStateController`) and treat both `ManagementState=Removed` AND `DeletionTimestamp != nil` as removal signals.
 
 **Implementation** (pkg/operator/starter.go:77, 150-169):
 ```go
-.WithManagementStateController(operandName, removable=true)
+.WithManagementStateController(operandName, true) // true = removable
 
 func getOperatorSyncState(operatorClient) opv1.ManagementState {
     if opSpec.ManagementState == opv1.Removed {
@@ -67,7 +67,7 @@ Conditional resources (RBAC, ServiceAccount, CSIDriver, ConfigMap, NetworkPolicy
 ## Alternatives Considered
 
 ### Alternative 1: Non-Removable Operator
-**Description**: Set `removable=false`, require manual resource cleanup after operator deletion.  
+**Description**: Pass `false` as the removable argument, require manual resource cleanup after operator deletion.  
 **Rejected because**: Violates OpenShift operator best practices. Users expect `oc delete clustercsidrivers/secrets-store.csi.k8s.io` to clean up all managed resources.
 
 ### Alternative 2: Finalizer-Based Cleanup
@@ -80,7 +80,7 @@ Conditional resources (RBAC, ServiceAccount, CSIDriver, ConfigMap, NetworkPolicy
 
 ## References
 
-- [pkg/operator/starter.go:77](../../../pkg/operator/starter.go) - `removable=true` registration
+- [pkg/operator/starter.go:77](../../../pkg/operator/starter.go) - removable registration (`true` argument)
 - [pkg/operator/starter.go:150-169](../../../pkg/operator/starter.go) - `getOperatorSyncState()` implementation
 - [Management State Controller Documentation](https://github.com/openshift/library-go/tree/master/pkg/operator/managementstate)
 - [Platform ADRs](https://github.com/openshift/enhancements/tree/master/ai-docs/) for cross-repo operator patterns

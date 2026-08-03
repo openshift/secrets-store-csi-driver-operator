@@ -80,7 +80,7 @@ This document links to generic OpenShift/Kubernetes patterns in the Platform eco
 **Component Usage**:
 - Watches `ClusterCSIDriver` resource named `secrets-store.csi.k8s.io`
 - Packaged as OLM bundle (see `config/manifests/`)
-- Uses `CSIConfigObserverController` to propagate cluster config to operand
+- Uses `CSIConfigObserverController` to observe Proxy/APIServer config into `status.observedConfig`; not yet consumed to change the CSI driver operand
 
 ## Cross-Repository ADRs
 
