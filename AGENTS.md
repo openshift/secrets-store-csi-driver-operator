@@ -3,7 +3,7 @@
 **Component**: OpenShift Secrets Store CSI Driver Operator  
 **Repository**: openshift/secrets-store-csi-driver-operator  
 
-> **For AI Agents**: Start with `ai-docs/domain/` to understand SecretProviderClass APIs, then read `ai-docs/architecture/components.md` for implementation patterns. Check `ai-docs/decisions/` for architectural constraints before proposing changes. Use `ai-docs/SECRETS_STORE_DEVELOPMENT.md` for common tasks.
+> **For AI Agents**: Start with `harness-evals/harness-docs/domain/` to understand SecretProviderClass APIs, then read `harness-evals/harness-docs/architecture/components.md` for implementation patterns. Check `harness-evals/harness-docs/decisions/` for architectural constraints before proposing changes. Use `harness-evals/harness-docs/SECRETS_STORE_DEVELOPMENT.md` for common tasks.
 
 > **Generic Platform Patterns**: See Platform documentation (openshift/enhancements/ai-docs/) for operator patterns, testing practices, security guidelines, and cross-repo ADRs.
 
@@ -33,7 +33,7 @@ RBAC, ServiceAccount, CSIDriver, ConfigMap, NetworkPolicy use `WithConditionalSt
 ## Documentation Structure
 
 ```text
-ai-docs/
+harness-evals/harness-docs/
 ├── domain/                           # SecretProviderClass + PodStatus CRDs
 ├── architecture/
 │   └── components.md                 # Repo layout, controller set, apply patterns
@@ -51,7 +51,7 @@ ai-docs/
 
 **Platform Patterns**: [Operator](openshift/enhancements/ai-docs/platform/operators/) | [Testing](openshift/enhancements/ai-docs/platform/testing/) | [Security](openshift/enhancements/ai-docs/platform/security/)
 
-**Retrieval Strategy**: For implementation tasks, always check `ai-docs/architecture/components.md` for verified patterns (apply methods, informer scoping, controller framework). For API questions, see `ai-docs/domain/`. For "why" questions, see `ai-docs/decisions/`.
+**Retrieval Strategy**: For implementation tasks, always check `harness-evals/harness-docs/architecture/components.md` for verified patterns (apply methods, informer scoping, controller framework). For API questions, see `harness-evals/harness-docs/domain/`. For "why" questions, see `harness-evals/harness-docs/decisions/`.
 
 **Common Pitfalls** (verified in code):
 | Anti-Pattern | Fix |

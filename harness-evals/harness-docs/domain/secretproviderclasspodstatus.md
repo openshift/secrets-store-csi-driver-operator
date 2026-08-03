@@ -4,7 +4,7 @@
 **Kind**: `SecretProviderClassPodStatus`  
 **Scope**: Namespaced
 
-**API Definition**: [CRD](../../config/manifests/stable/secrets-store.csi.x-k8s.io_secretproviderclasspodstatuses.yaml)  
+**API Definition**: [CRD](../../../config/manifests/stable/secrets-store.csi.x-k8s.io_secretproviderclasspodstatuses.yaml)  
 **Upstream Documentation**: [secrets-store-csi-driver](https://secrets-store-csi-driver.sigs.k8s.io/)
 
 ## Purpose

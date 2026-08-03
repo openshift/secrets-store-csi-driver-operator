@@ -12,7 +12,7 @@ This document catalogs design documentation for the Secrets Store CSI Driver Ope
 
 ## Local Design Documents
 
-### Component Guidelines (ai-docs/guidelines/)
+### Component Guidelines (harness-evals/harness-docs/guidelines/)
 
 The following guidelines are component-specific operational conventions, not enhancement proposals:
 

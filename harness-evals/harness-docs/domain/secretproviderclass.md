@@ -4,7 +4,7 @@
 **Kind**: `SecretProviderClass`  
 **Scope**: Namespaced
 
-**API Definition**: [CRD](../../config/manifests/stable/secrets-store.csi.x-k8s.io_secretproviderclasses.yaml)  
+**API Definition**: [CRD](../../../config/manifests/stable/secrets-store.csi.x-k8s.io_secretproviderclasses.yaml)  
 **Upstream Documentation**: [secrets-store-csi-driver](https://secrets-store-csi-driver.sigs.k8s.io/)
 
 ## Purpose
