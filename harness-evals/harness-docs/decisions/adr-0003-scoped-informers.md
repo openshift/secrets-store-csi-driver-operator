@@ -34,9 +34,9 @@ kubeInformersForNamespaces := v1helpers.NewKubeInformersForNamespaces(
 ```
 
 **Behavior**:
-- `operatorNamespace` → watches namespace-scoped resources in `openshift-cluster-csi-drivers`
-- `""` → watches cluster-scoped resources (ClusterRoles, CSIDriver, nodes, etc.)
-- All other namespaces are **ignored**
+- `operatorNamespace` → library-go creates this factory with `informers.WithNamespace(operatorNamespace)`, scoping its watches to `openshift-cluster-csi-drivers` only
+- `""` → library-go creates an unscoped `informers.NewSharedInformerFactory` (the same factory used for all-namespace watches). This operator only requests cluster-scoped listers (ClusterRoles, CSIDriver, Nodes, etc.) from it, so no namespaced resource ends up cached cluster-wide in practice — but the factory itself is not namespace-restricted
+- Namespaces outside this list have no informer registered and cannot be watched
 
 ## Rationale
 
@@ -45,7 +45,7 @@ kubeInformersForNamespaces := v1helpers.NewKubeInformersForNamespaces(
 - This operator only needs Pods in `openshift-cluster-csi-drivers` (the DaemonSet pods).
 - Caching 9,900+ irrelevant Pods wastes memory and CPU (reflector updates, cache indexing).
 
-**Why `""` (cluster-scoped):** Some resources (CSIDriver, ClusterCSIDriver, nodes) have no namespace. The empty string `""` is library-go's convention for cluster-scoped resources.
+**Why `""` (cluster-scoped):** Some resources (CSIDriver, ClusterCSIDriver, nodes) have no namespace. Passing `""` to `NewKubeInformersForNamespaces` makes library-go register an unscoped `SharedInformerFactory` under that key, which is the only way to list/watch cluster-scoped resources. This operator only pulls cluster-scoped listers from that factory, so it avoids caching namespaced resources cluster-wide even though the factory type itself has no built-in namespace restriction.
 
 **How to apply:** When creating new informers in this operator:
 1. **DO** use `NewKubeInformersForNamespaces(client, operatorNamespace, "")`

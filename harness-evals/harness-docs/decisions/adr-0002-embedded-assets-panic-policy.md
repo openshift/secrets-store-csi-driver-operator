@@ -37,7 +37,7 @@ func replaceNamespaceFunc(namespace string) resourceapply.AssetFunc {
 
 **Why panic is acceptable here:**
 - Missing embedded asset is a **build-time bug**, not a transient runtime error
-- This code path is executed during controller setup (before reconciliation starts)
+- `replaceNamespaceFunc` is called once during controller setup, but the `AssetFunc` closure it returns is invoked by `resourceapply.ApplyDirectly` on **every reconciliation sync** (each periodic resync and event-triggered sync), not just at startup
 - Panic causes operator pod to crash-loop → immediate visibility in OLM and cluster monitoring
 - The error cannot be recovered without redeploying a fixed operator binary
 
@@ -59,7 +59,7 @@ func replaceNamespaceFunc(namespace string) resourceapply.AssetFunc {
 ### Positive
 - **Fail-fast detection** - Missing asset causes immediate crash-loop, visible in `oc get pods -n openshift-cluster-csi-drivers`
 - **Clear root cause** - Panic message includes asset name: `panic: open node.yaml: file does not exist`
-- **Prevents partial state** - Operator never reaches reconciliation if assets are missing → no orphaned resources
+- **Loud failure instead of silent partial state** - `ApplyDirectly` applies the registered files in list order, so files registered before the missing one may already be applied on each sync pass before the panic aborts the rest. There is no atomic all-or-nothing guarantee, but crash-looping makes the incomplete state impossible to miss (vs. an operator that runs indefinitely with some resources silently un-synced)
 
 ### Negative
 - **Operator unavailable during bug** - Crash-loop means no reconciliation, no status updates, no cleanup. Cluster's CSI driver state is frozen.

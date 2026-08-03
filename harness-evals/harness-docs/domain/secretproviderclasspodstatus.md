@@ -38,7 +38,7 @@ The CSI driver manages SecretProviderClassPodStatus resources automatically:
 
 1. **Creation**: When a pod's CSI volume is mounted, the driver creates a SecretProviderClassPodStatus in the pod's namespace.
 2. **Update**: The `objects` field is populated with metadata returned by the provider during mount.
-3. **Deletion**: When the pod is deleted, the CSI driver's cleanup logic removes the SecretProviderClassPodStatus.
+3. **Deletion**: The CSI driver sets the owning pod as the `ownerReferences` of the SecretProviderClassPodStatus at creation time. When the pod is deleted, Kubernetes garbage collection removes the SecretProviderClassPodStatus automatically — the CSI driver does not run a separate cleanup loop.
 
 **Naming**: The resource name follows the pattern `<pod-name>-<namespace>-<secretproviderclass-name>`.
 
@@ -90,7 +90,7 @@ status:
 
 ### RBAC Requirements
 
-The CSI driver node SA requires full access to SecretProviderClassPodStatus resources:
+The CSI driver node SA requires `get`/`list`/`watch`/`create`/`update`/`patch`/`delete` on `secretproviderclasspodstatuses`, plus `get`/`patch`/`update` on the `secretproviderclasspodstatuses/status` subresource:
 
 ```yaml
 apiVersion: rbac.authorization.k8s.io/v1
@@ -100,7 +100,10 @@ metadata:
 rules:
   - apiGroups: ["secrets-store.csi.x-k8s.io"]
     resources: ["secretproviderclasspodstatuses"]
-    verbs: ["create", "update", "patch", "delete", "get", "list"]
+    verbs: ["create", "delete", "get", "list", "patch", "update", "watch"]
+  - apiGroups: ["secrets-store.csi.x-k8s.io"]
+    resources: ["secretproviderclasspodstatuses/status"]
+    verbs: ["get", "patch", "update"]
 ```
 
 Configured in assets/rbac/secretproviderclasses_role.yaml.
@@ -114,7 +117,7 @@ Users can inspect SecretProviderClassPodStatus for debugging:
 oc get secretproviderclasspodstatuses -n my-app
 
 # Check mount status for a specific pod
-oc get secretproviderclasspodstatuses -n my-app my-app-pod-my-app-azure-vault-example -o yaml
+oc get secretproviderclasspodstatuses -n default my-app-pod-default-azure-vault-example -o yaml
 ```
 
 **Common debugging patterns**:
@@ -124,11 +127,9 @@ oc get secretproviderclasspodstatuses -n my-app my-app-pod-my-app-azure-vault-ex
 
 ### Cleanup Behavior
 
-SecretProviderClassPodStatus resources are deleted when:
-- Pod is deleted (normal cleanup)
-- Volume is unmounted before pod deletion (rare)
+SecretProviderClassPodStatus resources are Pod-owned via `ownerReferences` (keyed on the pod's UID), so Kubernetes' built-in garbage collection deletes them automatically when the owning pod is deleted — no CSI-driver cleanup loop is involved. Because the reference is UID-based, pod rescheduling (e.g., a StatefulSet pod name being reused) is handled correctly: the old SecretProviderClassPodStatus is garbage-collected via the old pod's UID rather than being mistaken for the new pod's status.
 
-**Orphaned resources**: If the CSI driver crashes during cleanup, SecretProviderClassPodStatus resources may be orphaned. The CSI driver does NOT have a garbage collection loop. Users must manually delete orphaned resources or implement custom cleanup.
+**Orphaned resources**: Orphaning can still occur if the `ownerReferences` is missing or Kubernetes garbage collection cannot process the deletion (e.g., API server disruption during pod termination). In these rare cases, users may need to manually delete leftover SecretProviderClassPodStatus resources.
 
 ### Version API
 

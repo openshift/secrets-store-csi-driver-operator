@@ -68,12 +68,11 @@ make test-e2e       # Run E2E tests via hack/e2e.sh (requires cluster)
 - Running OpenShift cluster
 - `oc` CLI authenticated to the cluster
 
-**What it tests**:
-- Operator deployment via OLM
-- DaemonSet reconciliation
-- Management state transitions (Managed → Unmanaged → Removed)
+**Prerequisites for `hack/e2e.sh`**: The operator, CSI driver, and e2e-provider pods must already be deployed on the target cluster (see `test_prechecks` in the script).
 
-**Note**: E2E tests are NOT expected to pass locally (require specific cluster configuration). Run in CI via Prow.
+**What it tests**: Creates a test namespace and a SecretProviderClass, then a pod that mounts it via a CSI volume, and verifies the mounted secret through the pod's logs. It does not exercise OLM install, DaemonSet reconciliation from scratch, or `ManagementState` transitions — see [SECRETS_STORE_TESTING.md](./SECRETS_STORE_TESTING.md#what-e2e-tests-cover) for the full breakdown and for manual/CI-only verification steps for those scenarios.
+
+**Note**: `make test-e2e` requires an authenticated OpenShift cluster with the prerequisites above already deployed — it cannot run on a machine without one. CI (Prow) provisions such a cluster automatically; a properly configured local/dev cluster can also run it.
 
 ### Verification
 

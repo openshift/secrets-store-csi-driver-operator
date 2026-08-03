@@ -4,7 +4,7 @@
 **Repository**: openshift/secrets-store-csi-driver-operator  
 
 > **For AI Agents**: Start with `harness-evals/harness-docs/domain/` to understand SecretProviderClass APIs, then read `harness-evals/harness-docs/architecture/components.md` for implementation patterns. Check `harness-evals/harness-docs/decisions/` for architectural constraints before proposing changes. Use `harness-evals/harness-docs/SECRETS_STORE_DEVELOPMENT.md` for common tasks.
-
+>
 > **Generic Platform Patterns**: See Platform documentation (openshift/enhancements/ai-docs/) for operator patterns, testing practices, security guidelines, and cross-repo ADRs.
 
 ## What is Secrets Store CSI Driver Operator?
@@ -54,6 +54,7 @@ harness-evals/harness-docs/
 **Retrieval Strategy**: For implementation tasks, always check `harness-evals/harness-docs/architecture/components.md` for verified patterns (apply methods, informer scoping, controller framework). For API questions, see `harness-evals/harness-docs/domain/`. For "why" questions, see `harness-evals/harness-docs/decisions/`.
 
 **Common Pitfalls** (verified in code):
+
 | Anti-Pattern | Fix |
 |-------------|-----|
 | Add asset subdirectory without updating `//go:embed` | Update `assets/assets.go:7` directive |

@@ -4,7 +4,7 @@ This document describes the Secrets Store CSI Driver Operator's internal archite
 
 ## Repository Layout
 
-```
+```text
 cmd/
 └── secrets-store-csi-driver-operator/
     └── main.go                          # Entry point; creates cobra command + controller config
@@ -59,7 +59,7 @@ must-gather/gather                       # must-gather collection script
 
 ### 1. Entry Point (cmd/secrets-store-csi-driver-operator/main.go)
 
-```
+```text
 main()
   └── NewOperatorCommand()  # Create cobra root command
       └── controllercmd.NewControllerCommandConfig(...).NewCommand()
@@ -75,7 +75,7 @@ main()
 
 Creates clients, informers, and the CSI controller set:
 
-```
+```text
 RunOperator(ctx, controllerConfig)
   ├── Create core clients
   │   ├── kubeClient (kubernetes.Clientset)
@@ -97,7 +97,7 @@ RunOperator(ctx, controllerConfig)
   └── Build CSI controller set (method chaining)
       ├── NewCSIControllerSet(operatorClient, eventRecorder)
       ├── .WithLogLevelController()
-      ├── .WithManagementStateController(operandName, removable=true)
+      ├── .WithManagementStateController(operandName, true)  # true = removable
       ├── .WithConditionalStaticResourcesController(...)  # Static YAML assets
       ├── .WithCSIConfigObserverController(...)           # Cluster config observer
       └── .WithCSIDriverNodeService(...)                  # DaemonSet + CA bundle hook
@@ -178,7 +178,7 @@ func getOperatorSyncState(operatorClient) opv1.ManagementState {
 - `Unmanaged` → Skip sync (fail-closed on errors)
 - `Removed` OR `DeletionTimestamp != nil` → Delete conditional resources
 
-**Removability**: Operator is marked removable (`management.IsOperatorRemovable()` returns true) because `WithManagementStateController` is called with `removable=true` (pkg/operator/starter.go:77).
+**Removability**: Operator is marked removable (`management.IsOperatorRemovable()` returns true) because `WithManagementStateController` is called with `true` as its second (removable) argument (pkg/operator/starter.go:77-78).
 
 ## DaemonSet Management
 
@@ -219,12 +219,12 @@ updateStrategy:
 ```go
 kubeInformersForNamespaces := v1helpers.NewKubeInformersForNamespaces(
     kubeClient,
-    operatorNamespace,  // openshift-cluster-csi-drivers
-    "",                 // cluster-scoped (no namespace filter)
+    operatorNamespace,  // openshift-cluster-csi-drivers: scoped via WithNamespace()
+    "",                 // unscoped factory, used here only for cluster-scoped resources
 )
 ```
 
-**Pattern**: Informers watch ONLY the operator namespace + cluster-scoped resources. **DO NOT create all-namespace informers** — this is a performance anti-pattern.
+**Pattern**: The `operatorNamespace` entry is a namespace-scoped factory (`informers.WithNamespace`); the `""` entry is an unscoped factory that this operator only queries for cluster-scoped listers (ClusterRoles, CSIDriver, Nodes). **DO NOT request namespaced resource listers (Pods, Secrets, etc.) from the `""` factory** — that would cache them across every namespace in the cluster, which is the performance anti-pattern this scoping is meant to avoid.
 
 **ConfigMap informer** (pkg/operator/starter.go:46):
 ```go
@@ -377,7 +377,7 @@ The `CSIConfigObserverController` watches OpenShift cluster config resources:
 - `config.openshift.io/v1/Proxy` - Cluster-wide proxy settings
 - `config.openshift.io/v1/APIServer` - API server TLS/auth config
 
-**Purpose**: Propagate cluster-level config to the CSI driver operand (not currently used by this operator, but wired in for future use).
+**Purpose**: Observes cluster-level config and writes it to the `ClusterCSIDriver` status's `observedConfig` field. This operator does not currently read `observedConfig` to change the CSI driver operand (DaemonSet/assets) — the controller is wired in for future use.
 
 ### Trusted CA Bundle
 
