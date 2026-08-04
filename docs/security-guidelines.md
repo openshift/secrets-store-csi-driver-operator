@@ -5,7 +5,7 @@
 - Follow least-privilege: each component gets its own `ClusterRole` scoped to exactly the verbs and resources it needs.
 - The operator defines two ClusterRoles in `assets/rbac/`:
   - **`privileged_role.yaml`** — grants `use` on the `privileged` SecurityContextConstraint (SCC). Only the node plugin DaemonSet ServiceAccount binds this (via `node_privileged_binding.yaml`).
-  - **`secretproviderclasses_role.yaml`** — node-plugin permissions: `get`/`list`/`watch` on `secrets`, `pods`, `secretproviderclasses`, `csidrivers`; full CRUD on `secrets` (for rotation/syncing) and `secretproviderclasspodstatuses`; `create`/`patch` on `events`; `create` on `serviceaccounts/token` (bound token minting). Bound via `secretproviderclasses_binding.yaml`.
+  - **`secretproviderclasses_role.yaml`** — node-plugin permissions: `get`/`list`/`watch` on `secrets`, `pods`, `secretproviderclasses`, `csidrivers`; full CRUD on `secrets` (for the sync-as-Kubernetes-secret feature) and `secretproviderclasspodstatuses`; `create`/`patch` on `events`. Bound via `secretproviderclasses_binding.yaml`.
 - Prefer keeping per-component RBAC separation so a compromised component cannot escalate.
 - When adding a new resource permission, add it to the correct component role, not a shared one.
 
@@ -24,7 +24,7 @@
 
 ## Service Account Token Handling
 
-- The node plugin uses `serviceaccounts/token` create permission to mint short-lived bound tokens for pod identity.
+- Pod service account tokens for workload identity federation (WIF) are requested via `CSIDriver.spec.tokenRequests` (configured dynamically from `ClusterCSIDriver.spec.driverConfig.secretsStore.tokenRequests`, see `pkg/operator/csidriver_asset.go`). Kubelet mints these tokens using its own node identity and passes them to the driver in the `NodePublishVolume` request context — the node plugin's ServiceAccount does not need `serviceaccounts/token` create permission for this.
 - Projected service account tokens should be mounted via `serviceAccountToken` volume projections with explicit `expirationSeconds` and `audience` when applicable.
 
 ## TLS and Certificate Management
