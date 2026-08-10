@@ -5,12 +5,9 @@ package e2e
 
 import (
 	"context"
-	"crypto/tls"
 	"fmt"
 	"io"
 	"net"
-	"net/http"
-	"os"
 	"strings"
 	"testing"
 	"time"
@@ -166,83 +163,6 @@ func waitForOperatorLogContains(ctx context.Context, podName string, substrings 
 		}
 		return true, nil
 	})
-}
-
-func dialTLS(addr string, minVersion, maxVersion uint16) error {
-	cfg := &tls.Config{
-		InsecureSkipVerify: true, // service-CA not mounted in the test process
-		MinVersion:         minVersion,
-		MaxVersion:         maxVersion,
-	}
-	dialer := &net.Dialer{Timeout: wireDialTimeout}
-	conn, err := tls.DialWithDialer(dialer, "tcp", addr, cfg)
-	if err != nil {
-		return err
-	}
-	if err := conn.Close(); err != nil {
-		return fmt.Errorf("failed to close TLS connection: %w", err)
-	}
-	return nil
-}
-
-func scrapeOperatorMetrics(ctx context.Context, podIP string) (err error) {
-	tr := &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-	}
-	client := &http.Client{Transport: tr, Timeout: wireDialTimeout}
-	url := fmt.Sprintf("https://%s/metrics", net.JoinHostPort(podIP, fmt.Sprintf("%d", operatorMetricsPort)))
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return err
-	}
-	token, err := metricsBearerToken()
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Authorization", "Bearer "+token)
-	resp, err := client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer func() {
-		if cerr := resp.Body.Close(); err == nil && cerr != nil {
-			err = fmt.Errorf("failed to close metrics response body: %w", cerr)
-		}
-	}()
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-	if err != nil {
-		return err
-	}
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("failed to check metrics response status: got %d: %s", resp.StatusCode, truncate(string(body), 200))
-	}
-	if !strings.Contains(string(body), "# HELP") && !strings.Contains(string(body), "# TYPE") {
-		return fmt.Errorf("failed to find prometheus markers in metrics body: %s", truncate(string(body), 200))
-	}
-	return nil
-}
-
-// metricsBearerToken returns the bearer token from the e2e restConfig used for
-// API access (BearerToken, or BearerTokenFile for in-cluster).
-func metricsBearerToken() (string, error) {
-	if restConfig == nil {
-		return "", fmt.Errorf("rest config not initialized")
-	}
-	if token := restConfig.BearerToken; token != "" {
-		return token, nil
-	}
-	if restConfig.BearerTokenFile == "" {
-		return "", fmt.Errorf("no bearer token available for metrics scrape")
-	}
-	b, err := os.ReadFile(restConfig.BearerTokenFile)
-	if err != nil {
-		return "", fmt.Errorf("read bearer token for metrics scrape: %w", err)
-	}
-	token := strings.TrimSpace(string(b))
-	if token == "" {
-		return "", fmt.Errorf("empty bearer token file %q", restConfig.BearerTokenFile)
-	}
-	return token, nil
 }
 
 func assertPlaintextHTTP(podIP string, port int) (err error) {

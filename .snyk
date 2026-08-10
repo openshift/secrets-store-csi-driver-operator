@@ -4,3 +4,5 @@
 exclude:
   global:
     - vendor/**
+    # E2E helpers that must skip TLS verify (service-CA not mounted in the test process).
+    - test/e2e/operator_insecure_tls.go
