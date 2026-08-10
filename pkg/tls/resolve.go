@@ -101,6 +101,10 @@ func WriteConfigFile(resolved ResolvedProfile) (string, error) {
 		return "", fmt.Errorf("failed to write temp config file: %w", err)
 	}
 	if err := tmpFile.Close(); err != nil {
+		name := tmpFile.Name()
+		if removeErr := os.Remove(name); removeErr != nil && !os.IsNotExist(removeErr) {
+			klog.Warningf("failed to remove temp config file %q after close error: %v", name, removeErr)
+		}
 		return "", fmt.Errorf("failed to close temp config file: %w", err)
 	}
 	return tmpFile.Name(), nil

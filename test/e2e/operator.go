@@ -47,7 +47,7 @@ func waitForOperatorReady(ctx context.Context) (*operatorPod, error) {
 		return true, nil
 	})
 	if err != nil {
-		return nil, fmt.Errorf("operator pod not ready: %w", err)
+		return nil, fmt.Errorf("failed to wait for operator pod: %w", err)
 	}
 	return ready, nil
 }
@@ -79,7 +79,7 @@ func getOperatorPod(ctx context.Context) (*operatorPod, error) {
 		}
 	}
 	if len(candidates) == 0 {
-		return nil, fmt.Errorf("no ready operator pod in %s", operatorNamespace)
+		return nil, fmt.Errorf("failed to find ready operator pod in %s", operatorNamespace)
 	}
 	// Prefer the newest ready pod (UID changes after restart).
 	newest := candidates[0]
@@ -112,7 +112,7 @@ func waitForOperatorRestart(ctx context.Context, previousUID string) (*operatorP
 		return true, nil
 	})
 	if err != nil {
-		return nil, fmt.Errorf("operator did not restart (still uid=%s): %w", previousUID, err)
+		return nil, fmt.Errorf("failed to wait for operator restart (still uid=%s): %w", previousUID, err)
 	}
 	return ready, nil
 }
@@ -133,7 +133,7 @@ func assertOperatorUIDStable(ctx context.Context, t *testing.T, uid string) {
 	}
 }
 
-func operatorLogs(ctx context.Context, podName string) (string, error) {
+func operatorLogs(ctx context.Context, podName string) (content string, err error) {
 	req := kubeClient.CoreV1().Pods(operatorNamespace).GetLogs(podName, &corev1.PodLogOptions{
 		Container: operatorContainerName,
 	})
@@ -141,7 +141,11 @@ func operatorLogs(ctx context.Context, podName string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer stream.Close()
+	defer func() {
+		if cerr := stream.Close(); err == nil && cerr != nil {
+			err = fmt.Errorf("failed to close log stream: %w", cerr)
+		}
+	}()
 	b, err := io.ReadAll(stream)
 	if err != nil {
 		return "", err
@@ -175,11 +179,13 @@ func dialTLS(addr string, minVersion, maxVersion uint16) error {
 	if err != nil {
 		return err
 	}
-	_ = conn.Close()
+	if err := conn.Close(); err != nil {
+		return fmt.Errorf("failed to close TLS connection: %w", err)
+	}
 	return nil
 }
 
-func scrapeOperatorMetrics(ctx context.Context, podIP string) error {
+func scrapeOperatorMetrics(ctx context.Context, podIP string) (err error) {
 	tr := &http.Transport{
 		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 	}
@@ -198,16 +204,20 @@ func scrapeOperatorMetrics(ctx context.Context, podIP string) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if cerr := resp.Body.Close(); err == nil && cerr != nil {
+			err = fmt.Errorf("failed to close metrics response body: %w", cerr)
+		}
+	}()
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if err != nil {
 		return err
 	}
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("metrics status %d: %s", resp.StatusCode, truncate(string(body), 200))
+		return fmt.Errorf("failed to check metrics response status: got %d: %s", resp.StatusCode, truncate(string(body), 200))
 	}
 	if !strings.Contains(string(body), "# HELP") && !strings.Contains(string(body), "# TYPE") {
-		return fmt.Errorf("metrics body missing prometheus markers: %s", truncate(string(body), 200))
+		return fmt.Errorf("failed to find prometheus markers in metrics body: %s", truncate(string(body), 200))
 	}
 	return nil
 }
@@ -235,14 +245,20 @@ func metricsBearerToken() (string, error) {
 	return token, nil
 }
 
-func assertPlaintextHTTP(podIP string, port int) error {
+func assertPlaintextHTTP(podIP string, port int) (err error) {
 	addr := net.JoinHostPort(podIP, fmt.Sprintf("%d", port))
 	conn, err := net.DialTimeout("tcp", addr, wireDialTimeout)
 	if err != nil {
-		return fmt.Errorf("tcp dial %s: %w", addr, err)
+		return fmt.Errorf("failed to dial tcp %s: %w", addr, err)
 	}
-	defer conn.Close()
-	_ = conn.SetDeadline(time.Now().Add(wireDialTimeout))
+	defer func() {
+		if cerr := conn.Close(); err == nil && cerr != nil {
+			err = fmt.Errorf("failed to close connection: %w", cerr)
+		}
+	}()
+	if err := conn.SetDeadline(time.Now().Add(wireDialTimeout)); err != nil {
+		return fmt.Errorf("failed to set connection deadline: %w", err)
+	}
 	if _, err := conn.Write([]byte("GET /metrics HTTP/1.0\r\nHost: localhost\r\n\r\n")); err != nil {
 		return err
 	}
@@ -256,7 +272,7 @@ func assertPlaintextHTTP(podIP string, port int) error {
 		return nil
 	}
 	// TLS would typically start with 0x16 0x03; treat non-HTTP as failure.
-	return fmt.Errorf("expected plaintext HTTP on %s, got %q", addr, truncate(resp, 80))
+	return fmt.Errorf("failed to verify plaintext HTTP on %s, got %q", addr, truncate(resp, 80))
 }
 
 func getReadyOperandPodIP(ctx context.Context) (string, error) {
@@ -276,7 +292,7 @@ func getReadyOperandPodIP(ctx context.Context) (string, error) {
 			}
 		}
 	}
-	return "", fmt.Errorf("no ready operand pod for DaemonSet %s", operandDaemonSetName)
+	return "", fmt.Errorf("failed to find ready operand pod for DaemonSet %s", operandDaemonSetName)
 }
 
 func daemonSetHasContainerPort(ctx context.Context, port int32) (bool, error) {
