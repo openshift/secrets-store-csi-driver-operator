@@ -9,6 +9,15 @@ import (
 	sigsyaml "sigs.k8s.io/yaml"
 )
 
+func cleanupTempFile(t *testing.T, path string) {
+	t.Helper()
+	t.Cleanup(func() {
+		if err := os.Remove(path); err != nil {
+			t.Errorf("failed to remove temp file %q: %v", path, err)
+		}
+	})
+}
+
 func TestWriteConfigFile(t *testing.T) {
 	intermediate := *configv1.TLSProfiles[configv1.TLSProfileIntermediateType]
 
@@ -19,7 +28,7 @@ func TestWriteConfigFile(t *testing.T) {
 		}
 		if path != "" {
 			t.Errorf("path = %q, want empty", path)
-			_ = os.Remove(path)
+			cleanupTempFile(t, path)
 		}
 	})
 
@@ -29,7 +38,7 @@ func TestWriteConfigFile(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		defer os.Remove(path)
+		cleanupTempFile(t, path)
 
 		content, err := os.ReadFile(path)
 		if err != nil {
@@ -44,6 +53,23 @@ func TestWriteConfigFile(t *testing.T) {
 		}
 		if len(config.ServingInfo.CipherSuites) == 0 {
 			t.Errorf("expected non-empty CipherSuites")
+		}
+	})
+
+	t.Run("honoring with unsupported ciphers fails without writing a file", func(t *testing.T) {
+		path, err := WriteConfigFile(ResolvedProfile{
+			Honor: true,
+			Spec: configv1.TLSProfileSpec{
+				MinTLSVersion: configv1.VersionTLS12,
+				Ciphers:       []string{"NOT-A-REAL-OPENSSL-CIPHER"},
+			},
+		})
+		if err == nil {
+			t.Fatal("expected error for unsupported ciphers, got nil")
+		}
+		if path != "" {
+			t.Errorf("path = %q, want empty", path)
+			cleanupTempFile(t, path)
 		}
 	})
 }

@@ -20,11 +20,11 @@ import (
 // (GetKubeConfigOrInClusterConfig) and fetches the operator's effective TLS
 // settings from apiserver.config.openshift.io/cluster.
 //
-// Client construction and the APIServer Get are retried with exponential
-// backoff for ~30s. rest.InClusterConfig can transiently fail to read projected
-// SA token/CA files right after scheduling, and the API server can be briefly
-// unreachable during a rollout. Failure after the budget is fatal: this
-// operator must not silently serve TLS settings it could not read.
+// Client construction and the APIServer Get are retried for ~30s.
+// rest.InClusterConfig can transiently fail to read projected SA token/CA
+// files right after scheduling, and the API server can be briefly unreachable
+// during a rollout. Failure after the budget is fatal: this operator must not
+// silently serve TLS settings it could not read.
 func ResolveFromCluster(ctx context.Context, kubeConfigFile, userAgent string) (ResolvedProfile, error) {
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
@@ -32,26 +32,31 @@ func ResolveFromCluster(ctx context.Context, kubeConfigFile, userAgent string) (
 	var resolved ResolvedProfile
 	var lastErr error
 	attempt := func(ctx context.Context) (bool, error) {
+		failureClass := ""
 		restConfig, err := libgoclient.GetKubeConfigOrInClusterConfig(kubeConfigFile, nil)
 		if err != nil {
 			lastErr = fmt.Errorf("failed to build kubeconfig: %w", err)
+			failureClass = "kubeconfig build failed"
 		} else if configClient, cErr := configclient.NewForConfig(rest.AddUserAgent(restConfig, userAgent)); cErr != nil {
 			lastErr = fmt.Errorf("failed to create config client: %w", cErr)
+			failureClass = "config client creation failed"
 		} else {
 			resolved, lastErr = FetchAndResolve(ctx, configClient.ConfigV1())
+			if lastErr != nil {
+				failureClass = "APIServer TLS profile fetch or resolve failed"
+			}
 		}
 		if lastErr != nil {
-			klog.Warningf("failed to resolve cluster TLS security profile, will retry: %v", lastErr)
+			klog.Warningf("failed to resolve cluster TLS security profile, will retry: %s", failureClass)
 			return false, nil
 		}
 		return true, nil
 	}
 
-	// ExponentialBackoffWithContext stops sleeping when ctx's timeout fires.
-	// attempt reports failures as (false, nil) so backoff keeps retrying;
+	// PollUntilContextCancel retries until success or the 30s context deadline.
+	// attempt reports failures as (false, nil) so polling continues;
 	// lastErr carries the real failure to the return below.
-	backoff := wait.Backoff{Duration: 2 * time.Second, Factor: 2, Steps: 4}
-	if err := wait.ExponentialBackoffWithContext(ctx, backoff, attempt); err != nil {
+	if err := wait.PollUntilContextCancel(ctx, 2*time.Second, true, attempt); err != nil {
 		if lastErr != nil {
 			return ResolvedProfile{}, lastErr
 		}
@@ -73,7 +78,9 @@ func WriteConfigFile(resolved ResolvedProfile) (string, error) {
 	config := &operatorv1alpha1.GenericOperatorConfig{
 		TypeMeta: metav1.TypeMeta{APIVersion: operatorv1alpha1.GroupVersion.String(), Kind: "GenericOperatorConfig"},
 	}
-	ApplyToServingInfo(&config.ServingInfo, resolved)
+	if err := ApplyToServingInfo(&config.ServingInfo, resolved); err != nil {
+		return "", err
+	}
 
 	content, err := sigsyaml.Marshal(config)
 	if err != nil {
@@ -84,7 +91,13 @@ func WriteConfigFile(resolved ResolvedProfile) (string, error) {
 		return "", fmt.Errorf("failed to create temp config file: %w", err)
 	}
 	if _, err := tmpFile.Write(content); err != nil {
-		tmpFile.Close()
+		name := tmpFile.Name()
+		if closeErr := tmpFile.Close(); closeErr != nil {
+			klog.Warningf("failed to close incomplete temp config file %q: %v", name, closeErr)
+		}
+		if removeErr := os.Remove(name); removeErr != nil && !os.IsNotExist(removeErr) {
+			klog.Warningf("failed to remove incomplete temp config file %q: %v", name, removeErr)
+		}
 		return "", fmt.Errorf("failed to write temp config file: %w", err)
 	}
 	if err := tmpFile.Close(); err != nil {

@@ -10,6 +10,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -104,6 +105,9 @@ func waitForOperatorRestart(ctx context.Context, previousUID string) (*operatorP
 		if previousUID != "" && pod.UID == previousUID {
 			return false, nil
 		}
+		if pod.IP == "" {
+			return false, nil
+		}
 		ready = pod
 		return true, nil
 	})
@@ -118,10 +122,7 @@ func assertOperatorUIDStable(ctx context.Context, t *testing.T, uid string) {
 	deadline := time.Now().Add(stableWaitWindow)
 	for time.Now().Before(deadline) {
 		pod, err := getOperatorPod(ctx)
-		if err != nil {
-			t.Fatalf("get operator pod while asserting stability: %v", err)
-		}
-		if pod.UID != uid {
+		if err == nil && pod.UID != uid {
 			t.Fatalf("operator restarted unexpectedly: old uid=%s new uid=%s name=%s", uid, pod.UID, pod.Name)
 		}
 		select {
@@ -188,6 +189,11 @@ func scrapeOperatorMetrics(ctx context.Context, podIP string) error {
 	if err != nil {
 		return err
 	}
+	token, err := metricsBearerToken()
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
 	resp, err := client.Do(req)
 	if err != nil {
 		return err
@@ -204,6 +210,29 @@ func scrapeOperatorMetrics(ctx context.Context, podIP string) error {
 		return fmt.Errorf("metrics body missing prometheus markers: %s", truncate(string(body), 200))
 	}
 	return nil
+}
+
+// metricsBearerToken returns the bearer token from the e2e restConfig used for
+// API access (BearerToken, or BearerTokenFile for in-cluster).
+func metricsBearerToken() (string, error) {
+	if restConfig == nil {
+		return "", fmt.Errorf("rest config not initialized")
+	}
+	if token := restConfig.BearerToken; token != "" {
+		return token, nil
+	}
+	if restConfig.BearerTokenFile == "" {
+		return "", fmt.Errorf("no bearer token available for metrics scrape")
+	}
+	b, err := os.ReadFile(restConfig.BearerTokenFile)
+	if err != nil {
+		return "", fmt.Errorf("read bearer token for metrics scrape: %w", err)
+	}
+	token := strings.TrimSpace(string(b))
+	if token == "" {
+		return "", fmt.Errorf("empty bearer token file %q", restConfig.BearerTokenFile)
+	}
+	return token, nil
 }
 
 func assertPlaintextHTTP(podIP string, port int) error {

@@ -6,13 +6,14 @@ import (
 	"os"
 
 	"github.com/openshift/library-go/pkg/controller/controllercmd"
-	"github.com/openshift/secrets-store-csi-driver-operator/pkg/operator"
-	sscsitls "github.com/openshift/secrets-store-csi-driver-operator/pkg/tls"
-	"github.com/openshift/secrets-store-csi-driver-operator/pkg/version"
 	"github.com/spf13/cobra"
 	"k8s.io/component-base/cli"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/clock"
+
+	"github.com/openshift/secrets-store-csi-driver-operator/pkg/operator"
+	sscsitls "github.com/openshift/secrets-store-csi-driver-operator/pkg/tls"
+	"github.com/openshift/secrets-store-csi-driver-operator/pkg/version"
 )
 
 const componentName = "secrets-store-csi-driver-operator"

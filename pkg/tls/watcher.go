@@ -88,7 +88,7 @@ func (w *SecurityProfileWatcher) handle(apiServer *configv1.APIServer) {
 	if err != nil {
 		// Consistent with bootstrap fail-hard: an unresolvable live config
 		// means we can no longer vouch for serving TLS settings.
-		klog.Errorf("TLS security profile watcher: failed to resolve APIServer TLS settings, restarting to re-resolve: %v", err)
+		klog.Errorf("failed to resolve APIServer TLS settings, restarting to re-resolve: %v", err)
 		w.fireLocked()
 		return
 	}
