@@ -118,7 +118,7 @@ func TestTLSProfileScenarios(t *testing.T) {
 	if err := waitForOperatorLogContains(ctx, pod.Name, "using Controllercmd default TLS settings"); err != nil {
 		restarted, rerr := waitForOperatorRestart(ctx, pod.UID)
 		if rerr != nil {
-			t.Fatalf("baseline Controllercmd default log not found: %v", err)
+			t.Fatalf("baseline Controllercmd default log not found; operator restart failed: %v", rerr)
 		}
 		if err := waitForOperatorLogContains(ctx, restarted.Name, "using Controllercmd default TLS settings"); err != nil {
 			t.Fatalf("baseline Controllercmd default log after restart: %v", err)
@@ -552,7 +552,7 @@ func TestTLSProfileRBACFailLoud(t *testing.T) {
 			LabelSelector: "app=" + operatorDeploymentName,
 		})
 		if err != nil {
-			return false, nil
+			return false, err
 		}
 		for _, p := range pods.Items {
 			if p.DeletionTimestamp != nil {
@@ -562,9 +562,7 @@ func TestTLSProfileRBACFailLoud(t *testing.T) {
 			if err != nil {
 				continue
 			}
-			lower := strings.ToLower(logs)
-			if strings.Contains(lower, "failed to get apiserver.config.openshift.io") ||
-				strings.Contains(lower, "forbidden") {
+			if strings.Contains(strings.ToLower(logs), "failed to get apiserver.config.openshift.io") {
 				return true, nil
 			}
 		}
@@ -628,9 +626,10 @@ func runTLSScenario(ctx context.Context, t *testing.T, tc tlsScenario, lastUID *
 			if err == nil {
 				t.Fatalf("expected API error containing %q, got nil", tc.expectAPIError)
 			}
-			if !apierrors.IsInvalid(err) &&
-				!strings.Contains(err.Error(), tc.expectAPIError) &&
-				!isTLSAdherenceUnsupported(err) {
+			if isTLSAdherenceUnsupported(err) {
+				t.Skipf("apiserver tlsAdherence not available (enable FeatureGate TLSAdherence): %v", err)
+			}
+			if !strings.Contains(err.Error(), tc.expectAPIError) {
 				t.Fatalf("expected API error containing %q, got: %v", tc.expectAPIError, err)
 			}
 			t.Logf("%s blocked by API as expected: %v", tc.id, err)

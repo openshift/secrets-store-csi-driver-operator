@@ -173,11 +173,13 @@ func TestApplyToServingInfo(t *testing.T) {
 
 	t.Run("does not mutate when Honor is false", func(t *testing.T) {
 		serving := &configv1.HTTPServingInfo{}
-		ApplyToServingInfo(serving, ResolvedProfile{
+		if err := ApplyToServingInfo(serving, ResolvedProfile{
 			Adherence: configv1.TLSAdherencePolicyLegacyAdheringComponentsOnly,
 			Spec:      modern,
 			Honor:     false,
-		})
+		}); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
 		if serving.MinTLSVersion != "" || len(serving.CipherSuites) != 0 {
 			t.Fatalf("expected ServingInfo unchanged, got %#v", serving)
 		}
@@ -185,11 +187,13 @@ func TestApplyToServingInfo(t *testing.T) {
 
 	t.Run("applies IANA ciphers when Honor is true", func(t *testing.T) {
 		serving := &configv1.HTTPServingInfo{}
-		ApplyToServingInfo(serving, ResolvedProfile{
+		if err := ApplyToServingInfo(serving, ResolvedProfile{
 			Adherence: configv1.TLSAdherencePolicyStrictAllComponents,
 			Spec:      modern,
 			Honor:     true,
-		})
+		}); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
 		if serving.MinTLSVersion != string(modern.MinTLSVersion) {
 			t.Fatalf("MinTLSVersion = %q, want %q", serving.MinTLSVersion, modern.MinTLSVersion)
 		}
@@ -200,12 +204,14 @@ func TestApplyToServingInfo(t *testing.T) {
 	})
 
 	t.Run("nil servingInfo is a no-op", func(t *testing.T) {
-		ApplyToServingInfo(nil, ResolvedProfile{Honor: true, Spec: modern})
+		if err := ApplyToServingInfo(nil, ResolvedProfile{Honor: true, Spec: modern}); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
 	})
 
-	t.Run("unsupported ciphers yield empty CipherSuites when honored", func(t *testing.T) {
+	t.Run("unsupported ciphers fail when honored", func(t *testing.T) {
 		serving := &configv1.HTTPServingInfo{}
-		ApplyToServingInfo(serving, ResolvedProfile{
+		err := ApplyToServingInfo(serving, ResolvedProfile{
 			Adherence: configv1.TLSAdherencePolicyStrictAllComponents,
 			Honor:     true,
 			Spec: configv1.TLSProfileSpec{
@@ -213,11 +219,11 @@ func TestApplyToServingInfo(t *testing.T) {
 				Ciphers:       []string{"NOT-A-REAL-OPENSSL-CIPHER"},
 			},
 		})
-		if serving.MinTLSVersion != string(configv1.VersionTLS12) {
-			t.Fatalf("MinTLSVersion = %q, want VersionTLS12", serving.MinTLSVersion)
+		if err == nil {
+			t.Fatal("expected error for unsupported ciphers, got nil")
 		}
-		if len(serving.CipherSuites) != 0 {
-			t.Fatalf("expected all unsupported ciphers dropped, got %#v", serving.CipherSuites)
+		if serving.MinTLSVersion != "" || len(serving.CipherSuites) != 0 {
+			t.Fatalf("expected ServingInfo unchanged on error, got %#v", serving)
 		}
 	})
 }

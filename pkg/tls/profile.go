@@ -95,7 +95,7 @@ func GetTLSProfileSpec(profile *configv1.TLSSecurityProfile) (configv1.TLSProfil
 	}
 
 	if profile.Custom == nil {
-		return configv1.TLSProfileSpec{}, fmt.Errorf("custom TLS profile specified but Custom field is nil")
+		return configv1.TLSProfileSpec{}, fmt.Errorf("failed to resolve custom TLS profile: Custom field is nil")
 	}
 	return profile.Custom.TLSProfileSpec, nil
 }
@@ -103,25 +103,31 @@ func GetTLSProfileSpec(profile *configv1.TLSSecurityProfile) (configv1.TLSProfil
 // ApplyToServingInfo writes MinTLSVersion and CipherSuites into servingInfo when
 // the resolved profile should be honored. Otherwise it leaves servingInfo unchanged
 // so Controllercmd recommended defaults remain in effect (Legacy adherence).
-func ApplyToServingInfo(servingInfo *configv1.HTTPServingInfo, resolved ResolvedProfile) {
+//
+// When Honor is true and the profile lists ciphers that OpenSSLToIANACipherSuites
+// drops entirely, an error is returned so Controllercmd defaults are not selected
+// in place of the cluster policy.
+func ApplyToServingInfo(servingInfo *configv1.HTTPServingInfo, resolved ResolvedProfile) error {
 	if servingInfo == nil || !resolved.Honor {
 		if servingInfo != nil && !resolved.Honor {
 			klog.Infof("TLS adherence policy is %q; using Controllercmd default TLS settings", resolved.Adherence)
 		}
-		return
+		return nil
+	}
+
+	cipherSuites := libgocrypto.OpenSSLToIANACipherSuites(resolved.Spec.Ciphers)
+	if len(resolved.Spec.Ciphers) > 0 && len(cipherSuites) == 0 {
+		// Every configured cipher was unsupported by Go's crypto/tls and
+		// silently dropped by OpenSSLToIANACipherSuites (logged only at
+		// klog V(4)). Failing here prevents Controllercmd default ciphers
+		// from being used in place of the cluster policy.
+		return fmt.Errorf("failed to apply cluster TLS profile: all %d cipher(s) are unsupported by Go's crypto/tls: %v",
+			len(resolved.Spec.Ciphers), resolved.Spec.Ciphers)
 	}
 
 	servingInfo.MinTLSVersion = string(resolved.Spec.MinTLSVersion)
-	servingInfo.CipherSuites = libgocrypto.OpenSSLToIANACipherSuites(resolved.Spec.Ciphers)
-	if len(resolved.Spec.Ciphers) > 0 && len(servingInfo.CipherSuites) == 0 {
-		// Every configured cipher was unsupported by Go's crypto/tls and
-		// silently dropped by OpenSSLToIANACipherSuites (logged only at
-		// klog V(4)). The server then falls back to Controllercmd default
-		// ciphers, which may be broader than the cluster policy intends.
-		klog.Warningf("all %d cipher(s) from the cluster TLS profile are unsupported by Go's crypto/tls and were "+
-			"dropped; the metrics server will use Controllercmd default ciphers instead of %v",
-			len(resolved.Spec.Ciphers), resolved.Spec.Ciphers)
-	}
+	servingInfo.CipherSuites = cipherSuites
 	klog.Infof("Applied cluster TLS profile to metrics serving config: minTLSVersion=%s, cipherSuites=%v",
 		servingInfo.MinTLSVersion, servingInfo.CipherSuites)
+	return nil
 }
