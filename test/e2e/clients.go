@@ -48,19 +48,19 @@ func setupClients() error {
 		// Fall back to in-cluster config (CI pods).
 		cfg, err = rest.InClusterConfig()
 		if err != nil {
-			return fmt.Errorf("kubeconfig and in-cluster config both failed: %w", err)
+			return fmt.Errorf("failed to load kubeconfig or in-cluster config: %w", err)
 		}
 	}
 	restConfig = cfg
 
 	kubeClient, err = kubernetes.NewForConfig(cfg)
 	if err != nil {
-		return fmt.Errorf("kubernetes client: %w", err)
+		return fmt.Errorf("failed to create kubernetes client: %w", err)
 	}
 
 	configClient, err = configv1client.NewForConfig(cfg)
 	if err != nil {
-		return fmt.Errorf("config client: %w", err)
+		return fmt.Errorf("failed to create config client: %w", err)
 	}
 	return nil
 }

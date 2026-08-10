@@ -59,7 +59,10 @@ func RunOperator(
 
 	// Create config clientset and informer. This is used to get the cluster ID
 	// and to watch apiserver TLS profile / adherence changes.
-	configClient := configclient.NewForConfigOrDie(rest.AddUserAgent(controllerConfig.KubeConfig, operatorName))
+	configClient, err := configclient.NewForConfig(rest.AddUserAgent(controllerConfig.KubeConfig, operatorName))
+	if err != nil {
+		return fmt.Errorf("failed to create config client: %w", err)
+	}
 	configInformers := configinformers.NewSharedInformerFactory(configClient, resync)
 
 	tlsWatcher := &sscsitls.SecurityProfileWatcher{
