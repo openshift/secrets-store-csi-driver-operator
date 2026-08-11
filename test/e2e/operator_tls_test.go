@@ -1,6 +1,3 @@
-//go:build e2e
-// +build e2e
-
 package e2e
 
 import (
@@ -9,8 +6,10 @@ import (
 	"io"
 	"net"
 	"strings"
-	"testing"
 	"time"
+
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -18,7 +17,6 @@ import (
 )
 
 const (
-	pollInterval     = 2 * time.Second
 	operatorTimeout  = 5 * time.Minute
 	wireDialTimeout  = 15 * time.Second
 	stableWaitWindow = 20 * time.Second
@@ -114,17 +112,15 @@ func waitForOperatorRestart(ctx context.Context, previousUID string) (*operatorP
 	return ready, nil
 }
 
-func assertOperatorUIDStable(ctx context.Context, t *testing.T, uid string) {
-	t.Helper()
+func assertOperatorUIDStable(ctx context.Context, uid string) {
 	deadline := time.Now().Add(stableWaitWindow)
 	for time.Now().Before(deadline) {
 		pod, err := getOperatorPod(ctx)
-		if err == nil && pod.UID != uid {
-			t.Fatalf("operator restarted unexpectedly: old uid=%s new uid=%s name=%s", uid, pod.UID, pod.Name)
-		}
+		Expect(err).NotTo(HaveOccurred())
+		Expect(pod.UID).To(Equal(uid), "operator restarted unexpectedly: old uid=%s new uid=%s name=%s", uid, pod.UID, pod.Name)
 		select {
 		case <-ctx.Done():
-			t.Fatalf("context canceled while asserting stability: %v", ctx.Err())
+			Fail(fmt.Sprintf("context canceled while asserting stability: %v", ctx.Err()))
 		case <-time.After(pollInterval):
 		}
 	}
@@ -173,7 +169,7 @@ func assertPlaintextHTTP(podIP string, port int) (err error) {
 	}
 	defer func() {
 		if cerr := conn.Close(); err == nil && cerr != nil {
-			err = fmt.Errorf("failed to close connection: %w", cerr)
+			err = fmt.Errorf("failed to close connection: %w", err)
 		}
 	}()
 	if err := conn.SetDeadline(time.Now().Add(wireDialTimeout)); err != nil {
