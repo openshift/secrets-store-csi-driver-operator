@@ -4,7 +4,7 @@
 
 - This operator uses the `library-go` controller framework via `NewKubeInformersForNamespaces`.
 - The config informer factory uses a 20-minute resync period (`resync = 20 * time.Minute` in `pkg/operator/starter.go`). Kube informers via `NewKubeInformersForNamespaces` use a 10-minute resync (library-go default).
-- Scope informers to the specific namespaces needed. The operator watches the operator namespace and cluster-scoped resources via `NewKubeInformersForNamespaces` rather than cluster-wide informers, reducing API server load.
+- Scope namespaced-resource informers to the specific namespaces needed. `NewKubeInformersForNamespaces(kubeClient, operatorNamespace, "")` scopes the `operatorNamespace` entry via `WithNamespace`; the `""` entry is an unscoped factory that this operator only queries for cluster-scoped listers (ClusterRoles, CSIDriver, Nodes) — never for namespaced resources like Pods or Secrets, which would defeat the scoping.
 - When adding new watchers, scope to the minimum required namespace set instead of watching all namespaces.
 
 ## Resource Requests and Limits
@@ -55,3 +55,9 @@
 
 - The node DaemonSet uses `RollingUpdate` strategy with `maxUnavailable: 10%` — this prevents all nodes from restarting simultaneously during updates.
 - Keep `maxUnavailable` at or below 10% for DaemonSets that run on every node.
+
+## References
+
+- [Component Architecture](../architecture/components.md)
+- [ADR-0003: Namespace-Scoped Informers](../decisions/adr-0003-scoped-informers.md)
+- [Platform Performance Guidelines](https://github.com/openshift/enhancements/tree/master/ai-docs/) — Cross-repo performance patterns

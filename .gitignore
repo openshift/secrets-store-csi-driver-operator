@@ -19,3 +19,6 @@
 opm-bundle/
 
 secrets-store-csi-driver-operator
+
+.DS_Store
+**/.DS_Store

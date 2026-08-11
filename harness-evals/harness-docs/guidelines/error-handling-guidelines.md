@@ -12,7 +12,7 @@
 - Use `klog.Errorf` for errors that indicate operator malfunction: `klog.Errorf("unable to get operator state: %v", err)`.
 - Use `klog.Infof` for normal operational events.
 - Use `klog.Warningf` sparingly — only for situations that are recoverable but unexpected.
-- Format log messages starting with a lowercase verb: `"unable to get..."`, `"syncing..."`, `"skipping..."`.
+- `fmt.Errorf`-wrapped error strings start with a lowercase verb (Go convention): `"unable to convert to ClusterCSIDriver: %w"`. `klog` log messages in this codebase are capitalized instead: `klog.Errorf("Failed to get operator state: %v", err)` (`pkg/operator/starter.go`) — match this existing style for new `klog` calls.
 - Avoid logging secret values, tokens, or credentials. Log resource names and namespaces, not resource contents.
 - Use `klog.V(n)` for debug-level messages. The operator supports standard klog verbosity flags.
 
@@ -54,3 +54,9 @@
 - Validate operator configuration at startup before entering the reconciliation loop.
 - The `RunOperator` function in `pkg/operator/starter.go` validates required clients and informers before starting controllers.
 - Fail fast with a clear error message if required configuration is missing, rather than entering a degraded reconciliation loop.
+
+## References
+
+- [Component Architecture](../architecture/components.md) — Verified error handling patterns in `pkg/operator/starter.go`
+- [ADR-0002: Panic on Missing Embedded Assets](../decisions/adr-0002-embedded-assets-panic-policy.md)
+- [Platform ADRs](https://github.com/openshift/enhancements/tree/master/ai-docs/) — Cross-repo error handling patterns
