@@ -22,11 +22,11 @@ func TestWriteConfigFile(t *testing.T) {
 	intermediate := *configv1.TLSProfiles[configv1.TLSProfileIntermediateType]
 
 	tests := []struct {
-		name            string
-		resolved        ResolvedProfile
-		wantErr         bool
-		wantEmptyPath   bool
-		wantMinTLS      string
+		name             string
+		resolved         ResolvedProfile
+		wantErr          bool
+		wantEmptyPath    bool
+		wantMinTLS       string
 		wantCipherSuites bool
 	}{
 		{
