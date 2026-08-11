@@ -170,60 +170,79 @@ func TestResolveFromAPIServer(t *testing.T) {
 
 func TestApplyToServingInfo(t *testing.T) {
 	modern := *configv1.TLSProfiles[configv1.TLSProfileModernType]
+	modernIANA := libgocrypto.OpenSSLToIANACipherSuites(modern.Ciphers)
 
-	t.Run("does not mutate when Honor is false", func(t *testing.T) {
-		serving := &configv1.HTTPServingInfo{}
-		if err := ApplyToServingInfo(serving, ResolvedProfile{
-			Adherence: configv1.TLSAdherencePolicyLegacyAdheringComponentsOnly,
-			Spec:      modern,
-			Honor:     false,
-		}); err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if serving.MinTLSVersion != "" || len(serving.CipherSuites) != 0 {
-			t.Fatalf("expected ServingInfo unchanged, got %#v", serving)
-		}
-	})
-
-	t.Run("applies IANA ciphers when Honor is true", func(t *testing.T) {
-		serving := &configv1.HTTPServingInfo{}
-		if err := ApplyToServingInfo(serving, ResolvedProfile{
-			Adherence: configv1.TLSAdherencePolicyStrictAllComponents,
-			Spec:      modern,
-			Honor:     true,
-		}); err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if serving.MinTLSVersion != string(modern.MinTLSVersion) {
-			t.Fatalf("MinTLSVersion = %q, want %q", serving.MinTLSVersion, modern.MinTLSVersion)
-		}
-		wantCiphers := libgocrypto.OpenSSLToIANACipherSuites(modern.Ciphers)
-		if !reflect.DeepEqual(serving.CipherSuites, wantCiphers) {
-			t.Fatalf("CipherSuites = %#v, want %#v", serving.CipherSuites, wantCiphers)
-		}
-	})
-
-	t.Run("nil servingInfo is a no-op", func(t *testing.T) {
-		if err := ApplyToServingInfo(nil, ResolvedProfile{Honor: true, Spec: modern}); err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-	})
-
-	t.Run("unsupported ciphers fail when honored", func(t *testing.T) {
-		serving := &configv1.HTTPServingInfo{}
-		err := ApplyToServingInfo(serving, ResolvedProfile{
-			Adherence: configv1.TLSAdherencePolicyStrictAllComponents,
-			Honor:     true,
-			Spec: configv1.TLSProfileSpec{
-				MinTLSVersion: configv1.VersionTLS12,
-				Ciphers:       []string{"NOT-A-REAL-OPENSSL-CIPHER"},
+	tests := []struct {
+		name        string
+		nilServing  bool
+		resolved    ResolvedProfile
+		wantErr     bool
+		wantMinTLS  string
+		wantCiphers []string
+	}{
+		{
+			name: "does not mutate when Honor is false",
+			resolved: ResolvedProfile{
+				Adherence: configv1.TLSAdherencePolicyLegacyAdheringComponentsOnly,
+				Spec:      modern,
+				Honor:     false,
 			},
+		},
+		{
+			name: "applies IANA ciphers when Honor is true",
+			resolved: ResolvedProfile{
+				Adherence: configv1.TLSAdherencePolicyStrictAllComponents,
+				Spec:      modern,
+				Honor:     true,
+			},
+			wantMinTLS:  string(modern.MinTLSVersion),
+			wantCiphers: modernIANA,
+		},
+		{
+			name:       "nil servingInfo is a no-op",
+			nilServing: true,
+			resolved:   ResolvedProfile{Honor: true, Spec: modern},
+		},
+		{
+			name: "unsupported ciphers fail when honored",
+			resolved: ResolvedProfile{
+				Adherence: configv1.TLSAdherencePolicyStrictAllComponents,
+				Honor:     true,
+				Spec: configv1.TLSProfileSpec{
+					MinTLSVersion: configv1.VersionTLS12,
+					Ciphers:       []string{"NOT-A-REAL-OPENSSL-CIPHER"},
+				},
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var serving *configv1.HTTPServingInfo
+			if !tt.nilServing {
+				serving = &configv1.HTTPServingInfo{}
+			}
+
+			err := ApplyToServingInfo(serving, tt.resolved)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("ApplyToServingInfo() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if tt.nilServing {
+				return
+			}
+			if tt.wantErr {
+				if serving.MinTLSVersion != "" || len(serving.CipherSuites) != 0 {
+					t.Fatalf("expected ServingInfo unchanged on error, got %#v", serving)
+				}
+				return
+			}
+			if serving.MinTLSVersion != tt.wantMinTLS {
+				t.Fatalf("MinTLSVersion = %q, want %q", serving.MinTLSVersion, tt.wantMinTLS)
+			}
+			if !reflect.DeepEqual(serving.CipherSuites, tt.wantCiphers) {
+				t.Fatalf("CipherSuites = %#v, want %#v", serving.CipherSuites, tt.wantCiphers)
+			}
 		})
-		if err == nil {
-			t.Fatal("expected error for unsupported ciphers, got nil")
-		}
-		if serving.MinTLSVersion != "" || len(serving.CipherSuites) != 0 {
-			t.Fatalf("expected ServingInfo unchanged on error, got %#v", serving)
-		}
-	})
+	}
 }

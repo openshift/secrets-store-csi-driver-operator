@@ -1,6 +1,3 @@
-//go:build e2e
-// +build e2e
-
 package e2e
 
 import (
@@ -67,13 +64,18 @@ func isTLSAdherenceUnsupported(err error) bool {
 	if err == nil {
 		return false
 	}
-	if apierrors.IsInvalid(err) || apierrors.IsForbidden(err) || apierrors.IsNotFound(err) {
-		msg := strings.ToLower(err.Error())
-		if strings.Contains(msg, "tlsadherence") || strings.Contains(msg, "unknown field") {
-			return true
-		}
+	msg := strings.ToLower(err.Error())
+	// Field not served / validation / RBAC / managed-cluster admission denials.
+	if strings.Contains(msg, "tlsadherence") || strings.Contains(msg, "unknown field") {
+		return true
 	}
-	return strings.Contains(strings.ToLower(err.Error()), "tlsadherence")
+	if strings.Contains(msg, "prevented from accessing red hat managed resources") {
+		return true
+	}
+	if apierrors.IsInvalid(err) || apierrors.IsForbidden(err) || apierrors.IsNotFound(err) {
+		return strings.Contains(msg, "tls") || strings.Contains(msg, "managed")
+	}
+	return false
 }
 
 func patchAPIServerAuditProfile(ctx context.Context, profileType configv1.AuditProfileType) error {

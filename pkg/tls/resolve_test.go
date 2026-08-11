@@ -21,55 +21,71 @@ func cleanupTempFile(t *testing.T, path string) {
 func TestWriteConfigFile(t *testing.T) {
 	intermediate := *configv1.TLSProfiles[configv1.TLSProfileIntermediateType]
 
-	t.Run("not honoring writes no file", func(t *testing.T) {
-		path, err := WriteConfigFile(ResolvedProfile{Honor: false, Spec: intermediate})
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if path != "" {
-			t.Errorf("path = %q, want empty", path)
-			cleanupTempFile(t, path)
-		}
-	})
-
-	t.Run("honoring writes a config file carrying the resolved TLS settings", func(t *testing.T) {
-		resolved := ResolvedProfile{Honor: true, Spec: intermediate}
-		path, err := WriteConfigFile(resolved)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		cleanupTempFile(t, path)
-
-		content, err := os.ReadFile(path)
-		if err != nil {
-			t.Fatalf("failed to read %q: %v", path, err)
-		}
-		var config operatorv1alpha1.GenericOperatorConfig
-		if err := sigsyaml.Unmarshal(content, &config); err != nil {
-			t.Fatalf("failed to unmarshal written config: %v", err)
-		}
-		if config.ServingInfo.MinTLSVersion != string(resolved.Spec.MinTLSVersion) {
-			t.Errorf("MinTLSVersion = %q, want %q", config.ServingInfo.MinTLSVersion, resolved.Spec.MinTLSVersion)
-		}
-		if len(config.ServingInfo.CipherSuites) == 0 {
-			t.Errorf("expected non-empty CipherSuites")
-		}
-	})
-
-	t.Run("honoring with unsupported ciphers fails without writing a file", func(t *testing.T) {
-		path, err := WriteConfigFile(ResolvedProfile{
-			Honor: true,
-			Spec: configv1.TLSProfileSpec{
-				MinTLSVersion: configv1.VersionTLS12,
-				Ciphers:       []string{"NOT-A-REAL-OPENSSL-CIPHER"},
+	tests := []struct {
+		name            string
+		resolved        ResolvedProfile
+		wantErr         bool
+		wantEmptyPath   bool
+		wantMinTLS      string
+		wantCipherSuites bool
+	}{
+		{
+			name:          "not honoring writes no file",
+			resolved:      ResolvedProfile{Honor: false, Spec: intermediate},
+			wantEmptyPath: true,
+		},
+		{
+			name:             "honoring writes a config file carrying the resolved TLS settings",
+			resolved:         ResolvedProfile{Honor: true, Spec: intermediate},
+			wantMinTLS:       string(intermediate.MinTLSVersion),
+			wantCipherSuites: true,
+		},
+		{
+			name: "honoring with unsupported ciphers fails without writing a file",
+			resolved: ResolvedProfile{
+				Honor: true,
+				Spec: configv1.TLSProfileSpec{
+					MinTLSVersion: configv1.VersionTLS12,
+					Ciphers:       []string{"NOT-A-REAL-OPENSSL-CIPHER"},
+				},
 			},
-		})
-		if err == nil {
-			t.Fatal("expected error for unsupported ciphers, got nil")
-		}
-		if path != "" {
-			t.Errorf("path = %q, want empty", path)
+			wantErr:       true,
+			wantEmptyPath: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path, err := WriteConfigFile(tt.resolved)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("WriteConfigFile() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if tt.wantEmptyPath {
+				if path != "" {
+					t.Errorf("path = %q, want empty", path)
+					cleanupTempFile(t, path)
+				}
+				return
+			}
+			if path == "" {
+				t.Fatal("path is empty, want written config file")
+			}
 			cleanupTempFile(t, path)
-		}
-	})
+
+			content, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatalf("failed to read %q: %v", path, err)
+			}
+			var config operatorv1alpha1.GenericOperatorConfig
+			if err := sigsyaml.Unmarshal(content, &config); err != nil {
+				t.Fatalf("failed to unmarshal written config: %v", err)
+			}
+			if config.ServingInfo.MinTLSVersion != tt.wantMinTLS {
+				t.Errorf("MinTLSVersion = %q, want %q", config.ServingInfo.MinTLSVersion, tt.wantMinTLS)
+			}
+			if tt.wantCipherSuites && len(config.ServingInfo.CipherSuites) == 0 {
+				t.Errorf("expected non-empty CipherSuites")
+			}
+		})
+	}
 }

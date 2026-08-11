@@ -11,122 +11,129 @@ import (
 func TestSecurityProfileWatcherHandle(t *testing.T) {
 	intermediate := *configv1.TLSProfiles[configv1.TLSProfileIntermediateType]
 
-	t.Run("no change does not fire OnChange", func(t *testing.T) {
-		var called atomic.Bool
-		w := &SecurityProfileWatcher{
-			InitialTLSProfileSpec:     intermediate,
-			InitialTLSAdherencePolicy: configv1.TLSAdherencePolicyNoOpinion,
-			OnChange:                  func() { called.Store(true) },
-		}
-		w.handle(&configv1.APIServer{})
-		if called.Load() {
-			t.Fatal("OnChange should not be called when nothing changed")
-		}
-	})
+	modernAPI := &configv1.APIServer{
+		Spec: configv1.APIServerSpec{
+			TLSAdherence: configv1.TLSAdherencePolicyStrictAllComponents,
+			TLSSecurityProfile: &configv1.TLSSecurityProfile{
+				Type: configv1.TLSProfileModernType,
+			},
+		},
+	}
+	oldAPI := &configv1.APIServer{
+		Spec: configv1.APIServerSpec{
+			TLSAdherence: configv1.TLSAdherencePolicyStrictAllComponents,
+			TLSSecurityProfile: &configv1.TLSSecurityProfile{
+				Type: configv1.TLSProfileOldType,
+			},
+		},
+	}
+	strictIntermediateAPI := &configv1.APIServer{
+		Spec: configv1.APIServerSpec{
+			TLSAdherence: configv1.TLSAdherencePolicyStrictAllComponents,
+			TLSSecurityProfile: &configv1.TLSSecurityProfile{
+				Type: configv1.TLSProfileIntermediateType,
+			},
+		},
+	}
+	unresolvableCustomAPI := &configv1.APIServer{
+		Spec: configv1.APIServerSpec{
+			TLSAdherence: configv1.TLSAdherencePolicyStrictAllComponents,
+			TLSSecurityProfile: &configv1.TLSSecurityProfile{
+				Type: configv1.TLSProfileCustomType,
+				// Custom field intentionally nil → GetTLSProfileSpec error
+			},
+		},
+	}
 
-	t.Run("profile change fires OnChange", func(t *testing.T) {
-		var called atomic.Bool
-		w := &SecurityProfileWatcher{
-			InitialTLSProfileSpec:     intermediate,
-			InitialTLSAdherencePolicy: configv1.TLSAdherencePolicyStrictAllComponents,
-			OnChange:                  func() { called.Store(true) },
-		}
-		w.handle(&configv1.APIServer{
-			Spec: configv1.APIServerSpec{
-				TLSAdherence: configv1.TLSAdherencePolicyStrictAllComponents,
-				TLSSecurityProfile: &configv1.TLSSecurityProfile{
-					Type: configv1.TLSProfileModernType,
-				},
+	tests := []struct {
+		name              string
+		initialSpec       configv1.TLSProfileSpec
+		initialAdherence  configv1.TLSAdherencePolicy
+		handles           []*configv1.APIServer
+		wantOnChangeCount int32
+	}{
+		{
+			name:              "no change does not fire OnChange",
+			initialSpec:       intermediate,
+			initialAdherence:  configv1.TLSAdherencePolicyNoOpinion,
+			handles:           []*configv1.APIServer{{}},
+			wantOnChangeCount: 0,
+		},
+		{
+			name:              "profile change fires OnChange",
+			initialSpec:       intermediate,
+			initialAdherence:  configv1.TLSAdherencePolicyStrictAllComponents,
+			handles:           []*configv1.APIServer{modernAPI},
+			wantOnChangeCount: 1,
+		},
+		{
+			name:              "adherence change fires OnChange",
+			initialSpec:       intermediate,
+			initialAdherence:  configv1.TLSAdherencePolicyLegacyAdheringComponentsOnly,
+			handles:           []*configv1.APIServer{strictIntermediateAPI},
+			wantOnChangeCount: 1,
+		},
+		{
+			name:              "unresolvable live config fires OnChange",
+			initialSpec:       intermediate,
+			initialAdherence:  configv1.TLSAdherencePolicyStrictAllComponents,
+			handles:           []*configv1.APIServer{unresolvableCustomAPI},
+			wantOnChangeCount: 1,
+		},
+		{
+			name:             "OnChange fires at most once",
+			initialSpec:      intermediate,
+			initialAdherence: configv1.TLSAdherencePolicyStrictAllComponents,
+			handles: []*configv1.APIServer{
+				modernAPI,
+				oldAPI,
+				unresolvableCustomAPI,
 			},
-		})
-		if !called.Load() {
-			t.Fatal("OnChange should be called when TLS profile changes")
-		}
-	})
+			wantOnChangeCount: 1,
+		},
+	}
 
-	t.Run("adherence change fires OnChange", func(t *testing.T) {
-		var called atomic.Bool
-		w := &SecurityProfileWatcher{
-			InitialTLSProfileSpec:     intermediate,
-			InitialTLSAdherencePolicy: configv1.TLSAdherencePolicyLegacyAdheringComponentsOnly,
-			OnChange:                  func() { called.Store(true) },
-		}
-		w.handle(&configv1.APIServer{
-			Spec: configv1.APIServerSpec{
-				TLSAdherence: configv1.TLSAdherencePolicyStrictAllComponents,
-				TLSSecurityProfile: &configv1.TLSSecurityProfile{
-					Type: configv1.TLSProfileIntermediateType,
-				},
-			},
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var fireCount atomic.Int32
+			w := &SecurityProfileWatcher{
+				InitialTLSProfileSpec:     tt.initialSpec,
+				InitialTLSAdherencePolicy: tt.initialAdherence,
+				OnChange:                  func() { fireCount.Add(1) },
+			}
+			for _, api := range tt.handles {
+				w.handle(api)
+			}
+			if got := fireCount.Load(); got != tt.wantOnChangeCount {
+				t.Fatalf("OnChange fired %d times, want %d", got, tt.wantOnChangeCount)
+			}
 		})
-		if !called.Load() {
-			t.Fatal("OnChange should be called when tlsAdherence changes")
-		}
-	})
-
-	t.Run("unresolvable live config fires OnChange", func(t *testing.T) {
-		var called atomic.Bool
-		w := &SecurityProfileWatcher{
-			InitialTLSProfileSpec:     intermediate,
-			InitialTLSAdherencePolicy: configv1.TLSAdherencePolicyStrictAllComponents,
-			OnChange:                  func() { called.Store(true) },
-		}
-		w.handle(&configv1.APIServer{
-			Spec: configv1.APIServerSpec{
-				TLSAdherence: configv1.TLSAdherencePolicyStrictAllComponents,
-				TLSSecurityProfile: &configv1.TLSSecurityProfile{
-					Type: configv1.TLSProfileCustomType,
-					// Custom field intentionally nil → GetTLSProfileSpec error
-				},
-			},
-		})
-		if !called.Load() {
-			t.Fatal("OnChange should be called when live TLS config is unresolvable")
-		}
-	})
-
-	t.Run("OnChange fires at most once", func(t *testing.T) {
-		var fireCount atomic.Int32
-		w := &SecurityProfileWatcher{
-			InitialTLSProfileSpec:     intermediate,
-			InitialTLSAdherencePolicy: configv1.TLSAdherencePolicyStrictAllComponents,
-			OnChange:                  func() { fireCount.Add(1) },
-		}
-		modernAPI := &configv1.APIServer{
-			Spec: configv1.APIServerSpec{
-				TLSAdherence: configv1.TLSAdherencePolicyStrictAllComponents,
-				TLSSecurityProfile: &configv1.TLSSecurityProfile{
-					Type: configv1.TLSProfileModernType,
-				},
-			},
-		}
-		oldAPI := &configv1.APIServer{
-			Spec: configv1.APIServerSpec{
-				TLSAdherence: configv1.TLSAdherencePolicyStrictAllComponents,
-				TLSSecurityProfile: &configv1.TLSSecurityProfile{
-					Type: configv1.TLSProfileOldType,
-				},
-			},
-		}
-		w.handle(modernAPI)
-		w.handle(oldAPI)
-		w.handle(&configv1.APIServer{
-			Spec: configv1.APIServerSpec{
-				TLSAdherence:       configv1.TLSAdherencePolicyStrictAllComponents,
-				TLSSecurityProfile: &configv1.TLSSecurityProfile{Type: configv1.TLSProfileCustomType},
-			},
-		})
-		if got := fireCount.Load(); got != 1 {
-			t.Fatalf("OnChange fired %d times, want exactly 1", got)
-		}
-	})
+	}
 }
 
 func TestResolveFromClusterCanceledContext(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-	_, err := ResolveFromCluster(ctx, "/nonexistent/kubeconfig", "test-agent")
-	if err == nil {
-		t.Fatal("expected error with canceled context / bad kubeconfig")
+	tests := []struct {
+		name    string
+		setup   func() context.Context
+		wantErr bool
+	}{
+		{
+			name: "canceled context with bad kubeconfig errors",
+			setup: func() context.Context {
+				ctx, cancel := context.WithCancel(context.Background())
+				cancel()
+				return ctx
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := ResolveFromCluster(tt.setup(), "/nonexistent/kubeconfig", "test-agent")
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("ResolveFromCluster() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
 	}
 }
