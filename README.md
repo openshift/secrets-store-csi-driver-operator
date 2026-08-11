@@ -87,6 +87,7 @@ A separate `Dockerfile.coverage` builds the operator binary with Go's `-cover` f
 In CI, the `hack/e2e-coverage.sh` script handles the full lifecycle:
 - `setup` -- patches the live CSV to swap in the coverage image and set `GOCOVERDIR`
 - `collect` -- sends SIGTERM, waits for container restart, copies coverage data, converts to a Go profile, and uploads to Codecov
+- `check-freshness` -- queries Codecov API to check if HEAD already has coverage; used by the periodic CI job to skip cluster provisioning when coverage is current
 
 ## Local usage
 

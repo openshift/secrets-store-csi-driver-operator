@@ -3,13 +3,14 @@
 # E2E coverage lifecycle script for CI and local use.
 #
 # Usage:
-#   hack/e2e-coverage.sh setup    Prepare the operator for coverage collection
-#   hack/e2e-coverage.sh collect  Collect, convert, and optionally upload coverage data
+#   hack/e2e-coverage.sh setup            Prepare the operator for coverage collection
+#   hack/e2e-coverage.sh collect          Collect, convert, and optionally upload coverage data
+#   hack/e2e-coverage.sh check-freshness  Skip run if Codecov already has coverage for HEAD
 #
 # Environment variables:
-#   COVERAGE_IMAGE          (setup)   Full pullspec of the coverage-instrumented image
-#   CODECOV_TOKEN           (collect) Codecov upload token; skip upload if unset
-#   ARTIFACT_DIR            (collect) Directory for CI artifacts; defaults to "."
+#   COVERAGE_IMAGE          (setup)           Full pullspec of the coverage-instrumented image
+#   CODECOV_TOKEN           (collect)         Codecov upload token; skip upload if unset
+#   ARTIFACT_DIR            (collect)         Directory for CI artifacts; defaults to "."
 set -euo pipefail
 
 NAMESPACE="openshift-cluster-csi-drivers"
@@ -167,6 +168,11 @@ collect() {
                 [[ -n "${PULL_BASE_SHA:-}" ]]   && codecov_args+=(--sha "${PULL_BASE_SHA}")
                 [[ -n "${PULL_BASE_REF:-}" ]]   && codecov_args+=(--branch "${PULL_BASE_REF}")
                 [[ -n "${REPO_OWNER:-}" && -n "${REPO_NAME:-}" ]] && codecov_args+=(--slug "${REPO_OWNER}/${REPO_NAME}")
+            elif [[ "${job_type}" == "periodic" ]]; then
+                local sha
+                sha=$(git rev-parse HEAD)
+                echo "Detected periodic (sha ${sha})"
+                codecov_args+=(--sha "${sha}" --branch "main")
             else
                 echo "Local run -- no Prow context, Codecov will auto-detect from git"
             fi
@@ -186,6 +192,52 @@ collect() {
     echo "--- Coverage collection complete ---"
 }
 
+check_freshness() {
+    echo "--- Coverage Freshness Check ---"
+
+    local head_sha
+    head_sha=$(git rev-parse HEAD)
+    echo "Current HEAD: ${head_sha}"
+
+    local token_args=()
+    if [[ -f "${CODECOV_SECRET_PATH}" ]]; then
+        token_args=(-H "Authorization: Bearer $(cat "${CODECOV_SECRET_PATH}")")
+    elif [[ -n "${CODECOV_TOKEN:-}" ]]; then
+        token_args=(-H "Authorization: Bearer ${CODECOV_TOKEN}")
+    fi
+
+    local response http_code body
+    response=$(curl -sS -w "\n%{http_code}" "${token_args[@]}" \
+        "https://api.codecov.io/api/v2/github/openshift/repos/secrets-store-csi-driver-operator/commits?branch=main&page_size=1") || {
+        echo "Error: Codecov API request failed (network/DNS error). Aborting."
+        exit 1
+    }
+
+    http_code=$(echo "${response}" | tail -1)
+    body=$(echo "${response}" | sed '$d')
+
+    if [[ "${http_code}" != "200" ]]; then
+        echo "Error: Codecov API returned HTTP ${http_code}. Aborting."
+        exit 1
+    fi
+
+    local last_covered_sha
+    last_covered_sha=$(echo "${body}" | jq -r '.results[0].commitid // empty')
+
+    if [[ -z "${last_covered_sha}" ]]; then
+        echo "No coverage data found on Codecov yet (first run?). Proceeding with coverage run."
+        exit 0
+    fi
+
+    if [[ "${head_sha}" == "${last_covered_sha}" ]]; then
+        echo "[SKIP] Coverage already current for ${head_sha}, nothing to do."
+        exit 1
+    fi
+
+    echo "Coverage stale: last=${last_covered_sha}, current=${head_sha}. Proceeding with e2e."
+    exit 0
+}
+
 case "${1:-}" in
     setup)
         setup
@@ -193,8 +245,11 @@ case "${1:-}" in
     collect)
         collect
         ;;
+    check-freshness)
+        check_freshness
+        ;;
     *)
-        echo "Usage: $0 {setup|collect}" >&2
+        echo "Usage: $0 {setup|collect|check-freshness}" >&2
         exit 1
         ;;
 esac
