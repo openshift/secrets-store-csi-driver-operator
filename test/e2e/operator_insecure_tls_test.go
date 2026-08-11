@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"os"
 	"strings"
+
+	"k8s.io/apimachinery/pkg/util/wait"
 )
 
 // dialTLS and scrapeOperatorMetrics intentionally disable certificate
@@ -28,6 +30,28 @@ func dialTLS(addr string, minVersion, maxVersion uint16) error {
 	}
 	if err := conn.Close(); err != nil {
 		return fmt.Errorf("failed to close TLS connection: %w", err)
+	}
+	return nil
+}
+
+// waitForDialTLS retries dialTLS for wireRetryTimeout. A freshly created (or
+// just-restarted) pod's NetworkPolicy ACLs can take a moment to converge on
+// OVN-Kubernetes, which manifests as a transient "i/o timeout" rather than
+// "connection refused" on the very first dial attempt right after an
+// install/update. Every other cluster-state wait in this suite already
+// retries (see pollInterval/pollTimeout in helpers_test.go); the raw wire
+// checks are wrapped the same way here for consistency and to avoid flaking
+// on that convergence window.
+func waitForDialTLS(ctx context.Context, addr string, minVersion, maxVersion uint16) error {
+	var lastErr error
+	err := wait.PollUntilContextTimeout(ctx, pollInterval, wireRetryTimeout, true, func(context.Context) (bool, error) {
+		if lastErr = dialTLS(addr, minVersion, maxVersion); lastErr != nil {
+			return false, nil
+		}
+		return true, nil
+	})
+	if err != nil {
+		return fmt.Errorf("failed to dial %s within %s: %w", addr, wireRetryTimeout, lastErr)
 	}
 	return nil
 }
@@ -65,6 +89,24 @@ func scrapeOperatorMetrics(ctx context.Context, podIP string) (err error) {
 	}
 	if !strings.Contains(string(body), "# HELP") && !strings.Contains(string(body), "# TYPE") {
 		return fmt.Errorf("failed to find prometheus markers in metrics body: %s", truncate(string(body), 200))
+	}
+	return nil
+}
+
+// waitForScrapeOperatorMetrics retries scrapeOperatorMetrics for
+// wireRetryTimeout; see waitForDialTLS for why raw wire checks need to
+// tolerate a brief NetworkPolicy/OVN convergence window instead of failing
+// on one attempt.
+func waitForScrapeOperatorMetrics(ctx context.Context, podIP string) error {
+	var lastErr error
+	err := wait.PollUntilContextTimeout(ctx, pollInterval, wireRetryTimeout, true, func(ctx context.Context) (bool, error) {
+		if lastErr = scrapeOperatorMetrics(ctx, podIP); lastErr != nil {
+			return false, nil
+		}
+		return true, nil
+	})
+	if err != nil {
+		return fmt.Errorf("failed to scrape operator metrics on %s within %s: %w", podIP, wireRetryTimeout, lastErr)
 	}
 	return nil
 }

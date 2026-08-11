@@ -17,8 +17,13 @@ import (
 )
 
 const (
-	operatorTimeout  = 5 * time.Minute
-	wireDialTimeout  = 15 * time.Second
+	operatorTimeout = 5 * time.Minute
+	wireDialTimeout = 15 * time.Second
+	// wireRetryTimeout bounds retries of raw TCP/TLS wire checks (dialTLS,
+	// assertPlaintextHTTP, scrapeOperatorMetrics) against a just-installed or
+	// just-restarted pod, tolerating transient NetworkPolicy/OVN ACL
+	// convergence rather than failing on a single dial attempt.
+	wireRetryTimeout = 60 * time.Second
 	stableWaitWindow = 20 * time.Second
 )
 
@@ -189,6 +194,24 @@ func assertPlaintextHTTP(podIP string, port int) (err error) {
 	}
 	// TLS would typically start with 0x16 0x03; treat non-HTTP as failure.
 	return fmt.Errorf("failed to verify plaintext HTTP on %s, got %q", addr, truncate(resp, 80))
+}
+
+// waitForPlaintextHTTP retries assertPlaintextHTTP for wireRetryTimeout; see
+// waitForDialTLS for why raw wire checks need to tolerate a brief
+// NetworkPolicy/OVN convergence window instead of failing on one attempt.
+func waitForPlaintextHTTP(ctx context.Context, podIP string, port int) error {
+	var lastErr error
+	err := wait.PollUntilContextTimeout(ctx, pollInterval, wireRetryTimeout, true, func(context.Context) (bool, error) {
+		if lastErr = assertPlaintextHTTP(podIP, port); lastErr != nil {
+			return false, nil
+		}
+		return true, nil
+	})
+	if err != nil {
+		return fmt.Errorf("failed to verify plaintext HTTP on %s within %s: %w",
+			net.JoinHostPort(podIP, fmt.Sprintf("%d", port)), wireRetryTimeout, lastErr)
+	}
+	return nil
 }
 
 func getReadyOperandPodIP(ctx context.Context) (string, error) {

@@ -340,7 +340,7 @@ var _ = Describe("TLS profile adherence", Label("tls"), Ordered, func() {
 		if err != nil {
 			Skip(fmt.Sprintf("operand not ready (ClusterCSIDriver may be unmanaged): %v", err))
 		}
-		Expect(assertPlaintextHTTP(ip, operandMetricsPort)).To(Succeed())
+		Expect(waitForPlaintextHTTP(ctx, ip, operandMetricsPort)).To(Succeed())
 	})
 
 	It("E2 operand uses unix CSI socket", func() {
@@ -574,12 +574,17 @@ func runTLSScenario(ctx context.Context, tc tlsScenario, lastUID *string) {
 	addr := net.JoinHostPort(pod.IP, fmt.Sprintf("%d", operatorMetricsPort))
 	switch tc.wire {
 	case wireHTTPSOK:
-		Expect(dialTLS(addr, tls.VersionTLS12, tls.VersionTLS13)).To(Succeed(), "HTTPS dial %s", addr)
+		// Retried: a freshly (re)started pod's NetworkPolicy ingress ACLs can
+		// take a moment to converge on OVN-Kubernetes, which otherwise shows
+		// up as a flaky "i/o timeout" on the very first dial.
+		Expect(waitForDialTLS(ctx, addr, tls.VersionTLS12, tls.VersionTLS13)).To(Succeed(), "HTTPS dial %s", addr)
 		if tc.id == "A3" {
-			Expect(scrapeOperatorMetrics(ctx, pod.IP)).To(Succeed())
+			Expect(waitForScrapeOperatorMetrics(ctx, pod.IP)).To(Succeed())
 		}
 	case wireModernTLS13Only:
-		Expect(dialTLS(addr, tls.VersionTLS13, tls.VersionTLS13)).To(Succeed(), "TLS1.3 dial should succeed")
+		Expect(waitForDialTLS(ctx, addr, tls.VersionTLS13, tls.VersionTLS13)).To(Succeed(), "TLS1.3 dial should succeed")
+		// Expected to fail (protocol version rejection, not a network drop):
+		// a single attempt is correct here, retrying would just waste time.
 		Expect(dialTLS(addr, tls.VersionTLS12, tls.VersionTLS12)).NotTo(Succeed(), "TLS1.2 dial should fail under Modern profile")
 	case wirePlaintextOperand:
 		// handled in dedicated E1 It
