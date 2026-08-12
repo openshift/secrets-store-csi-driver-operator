@@ -23,7 +23,16 @@ const (
 	// assertPlaintextHTTP, scrapeOperatorMetrics) against a just-installed or
 	// just-restarted pod, tolerating transient NetworkPolicy/OVN ACL
 	// convergence rather than failing on a single dial attempt.
-	wireRetryTimeout = 60 * time.Second
+	//
+	// The "TLS profile adherence" suite (tls_profile_test.go) only runs
+	// under the TLSAdherence feature gate, which today only the
+	// operator-e2e-fips CI job enables (CustomNoUpgrade FeatureSet). That
+	// job's first wire check (scenario A1) dials the operator pod within
+	// ~1s of it clearing readiness after BeforeAll's apiserver mutation, so
+	// there's very little cushion for ACL convergence on that lane before
+	// this budget was widened -- see dumpNetworkDiagnostics for how a
+	// repeat timeout here should be triaged.
+	wireRetryTimeout = 3 * time.Minute
 	stableWaitWindow = 20 * time.Second
 )
 
@@ -128,6 +137,44 @@ func assertOperatorUIDStable(ctx context.Context, uid string) {
 			Fail(fmt.Sprintf("context canceled while asserting stability: %v", ctx.Err()))
 		case <-time.After(pollInterval):
 		}
+	}
+}
+
+// dumpNetworkDiagnostics logs the NetworkPolicies in effect in
+// operatorNamespace, pod's node placement, and its recent events. Call this
+// right before failing a wire check (dialTLS/scrapeOperatorMetrics/
+// assertPlaintextHTTP) that exhausted its retry budget, so the resulting
+// artifacts can distinguish a slow-converging ACL (would eventually pass
+// with a longer budget, and diagnostics here look unremarkable) from a hard
+// block (diagnostics will show a NetworkPolicy whose ingress rules don't
+// cover the caller, or a pod stuck NotReady/misplaced).
+func dumpNetworkDiagnostics(ctx context.Context, pod *operatorPod) {
+	if nps, err := kubeClient.NetworkingV1().NetworkPolicies(operatorNamespace).List(ctx, metav1.ListOptions{}); err == nil {
+		for _, np := range nps.Items {
+			GinkgoWriter.Printf("[diagnostics] NetworkPolicy %s/%s podSelector=%v ingress=%+v\n",
+				np.Namespace, np.Name, np.Spec.PodSelector.MatchLabels, np.Spec.Ingress)
+		}
+	} else {
+		GinkgoWriter.Printf("[diagnostics] failed to list NetworkPolicies in %s: %v\n", operatorNamespace, err)
+	}
+
+	if p, err := kubeClient.CoreV1().Pods(operatorNamespace).Get(ctx, pod.Name, metav1.GetOptions{}); err == nil {
+		GinkgoWriter.Printf("[diagnostics] pod %s node=%s hostNetwork=%t phase=%s\n",
+			pod.Name, p.Spec.NodeName, p.Spec.HostNetwork, p.Status.Phase)
+	} else {
+		GinkgoWriter.Printf("[diagnostics] failed to get pod %s: %v\n", pod.Name, err)
+	}
+
+	events, err := kubeClient.CoreV1().Events(operatorNamespace).List(ctx, metav1.ListOptions{
+		FieldSelector: fmt.Sprintf("involvedObject.name=%s", pod.Name),
+	})
+	if err != nil {
+		GinkgoWriter.Printf("[diagnostics] failed to list events for pod %s: %v\n", pod.Name, err)
+		return
+	}
+	for _, e := range events.Items {
+		GinkgoWriter.Printf("[diagnostics] event pod=%s reason=%s lastSeen=%s: %s\n",
+			pod.Name, e.Reason, e.LastTimestamp, e.Message)
 	}
 }
 
