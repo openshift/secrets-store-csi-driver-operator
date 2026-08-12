@@ -1,0 +1,144 @@
+stage: repo-assessment
+template: templates/repo-assessment-template.md
+evals:
+  - id: eval-r001-repo-assessment-001
+    round: 1
+    stage: repo-assessment
+    title: UNVERIFIED items must carry an explicit disposition
+    source_issue_ids: [RCA-2]
+    input_refs:
+      - eval-generation/eval-generation-workflow/template-gaps/repo-assessment-gaps.md#GAP-RA-1
+    prompt: >
+      Evaluate a repository assessment report for a feature that touches an existing, ambiguous
+      capability or permission surface (e.g., an existing grant, config flag, or integration point
+      whose continued relevance to the new feature is unclear). Does the assessment's §11.1
+      Assessment Limitations / UNVERIFIED Items section give every flagged item a clear,
+      actionable resolution path rather than just recording the uncertainty?
+    assertions:
+      - type: must_cover_section
+        value: "11.1"
+      - type: must_identify_pattern
+        value: >
+          Every §11.1 item states a disposition (VERIFY_DURING_IMPLEMENTATION, DEFER with
+          owner/reason, or ACCEPT_RISK with rationale) — not merely an unresolved observation.
+      - type: must_mention
+        value: "VERIFY_DURING_IMPLEMENTATION"
+    scoring:
+      pass_threshold: 80
+      weight: 1.0
+
+  - id: eval-r001-repo-assessment-002
+    round: 1
+    stage: repo-assessment
+    title: Test-infrastructure capability limits documented distinctly from coverage gaps
+    source_issue_ids: [RCA-5]
+    input_refs:
+      - eval-generation/eval-generation-workflow/template-gaps/repo-assessment-gaps.md#GAP-RA-2
+    prompt: >
+      Evaluate whether §8.4 Test Coverage Gaps documents the CAPABILITIES AND LIMITS of the existing
+      test harness/fixtures (e.g., can a test fixture mutate external/simulated state mid-test, does
+      any upgrade/downgrade-path testing mechanism exist) as a distinct concern from which
+      packages simply lack test coverage.
+    assertions:
+      - type: must_cover_section
+        value: "8.4"
+      - type: must_identify_pattern
+        value: >
+          §8.4 states explicit test-infrastructure capability boundaries (what fixtures can/cannot
+          simulate; whether upgrade-path testing mechanisms exist in CI) distinct from package-level
+          coverage gaps.
+    scoring:
+      pass_threshold: 75
+      weight: 1.0
+
+  - id: eval-r001-repo-assessment-003
+    round: 1
+    stage: repo-assessment
+    title: Framework integration traps documented at signature/composition-rule granularity
+    source_issue_ids: [RCA-8]
+    input_refs:
+      - eval-generation/eval-generation-workflow/template-gaps/repo-assessment-gaps.md#GAP-RA-3
+    prompt: >
+      Evaluate §1.3 Framework & Pattern Architecture for a framework-composed controller/hook/
+      middleware architecture. Does it go beyond naming the pattern (e.g., "uses hook-based
+      composition") to state specific constraints a given hook/interface type's function signature
+      imposes (what it cannot carry, whether per-caller override exists)?
+    assertions:
+      - type: must_cover_section
+        value: "1.3"
+      - type: must_identify_pattern
+        value: >
+          §1.3 documents at least one signature-level or composition-rule-level constraint of the
+          framework used (not just a named architectural pattern).
+    scoring:
+      pass_threshold: 75
+      weight: 1.0
+
+  - id: eval-r001-repo-assessment-004
+    round: 1
+    stage: repo-assessment
+    title: Cross-check of carried-forward assumptions against repo evidence
+    source_issue_ids: [RCA-7]
+    input_refs:
+      - eval-generation/eval-generation-workflow/template-gaps/repo-assessment-gaps.md#GAP-RA-4
+    prompt: >
+      Evaluate whether the assessment explicitly cross-checks any suspected inconsistency, ambiguity,
+      or assumption flagged by an earlier validation/spec stage against concrete repo evidence, and
+      records the outcome (confirmed or corrected), rather than silently repeating the earlier flag
+      unexamined.
+    assertions:
+      - type: must_identify_pattern
+        value: >
+          Any assumption or flag carried forward from validation/specs is either confirmed or
+          corrected with cited repo evidence, not silently repeated.
+      - type: must_cite_repo_evidence
+        value: "Cross-check of a carried-forward assumption"
+    scoring:
+      pass_threshold: 70
+      weight: 0.8
+
+  - id: eval-r001-repo-assessment-005
+    round: 1
+    stage: repo-assessment
+    title: Co-versioned dependency family version-skew risk noted in guardrails
+    source_issue_ids: [RCA-3]
+    input_refs:
+      - eval-generation/eval-generation-workflow/template-gaps/repo-assessment-gaps.md#GAP-RA-5
+    prompt: >
+      Evaluate §6 Architectural Guardrails (Build/Tooling category) for a repo with multiple
+      co-maintained/vendored dependency families. Does it note the version-skew risk of bumping only
+      one member of a conventionally-bumped-together dependency family in isolation?
+    assertions:
+      - type: must_cover_section
+        value: "6"
+      - type: must_identify_pattern
+        value: >
+          Build/Tooling guardrails note any observed co-versioned dependency family and the
+          version-skew risk of bumping a single member in isolation.
+    scoring:
+      pass_threshold: 65
+      weight: 0.7
+
+  - id: eval-r001-repo-assessment-006
+    round: 1
+    stage: repo-assessment
+    title: Literal-value/serialization sensitivity flagged distinctly from semantic defaults
+    source_issue_ids: [RCA-1]
+    input_refs:
+      - eval-generation/eval-generation-workflow/template-gaps/repo-assessment-gaps.md#GAP-RA-6
+    prompt: >
+      Evaluate §4.1 Current Configuration Surface for a hardcoded default value that is baked into a
+      manifest/arg string whose exact literal rendering has downstream significance (e.g., changing
+      the string form without changing its meaning alters a hash used to trigger rollouts). Does the
+      assessment flag this literal-value sensitivity distinctly from documenting the semantic default,
+      and cross-reference it in §11 Risks?
+    assertions:
+      - type: must_cover_section
+        value: "4.1"
+      - type: must_identify_pattern
+        value: >
+          §4.1 flags at least one default whose literal serialization (not just semantic value) is
+          load-bearing, and §11 Risks cross-references it.
+    scoring:
+      pass_threshold: 70
+      weight: 0.8
