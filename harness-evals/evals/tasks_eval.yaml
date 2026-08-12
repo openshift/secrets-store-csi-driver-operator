@@ -1,0 +1,106 @@
+stage: tasks
+template: templates/tasks-template.md
+evals:
+  - id: eval-r001-tasks-001
+    round: 1
+    stage: tasks
+    title: Exact-baseline regression test required for backward-compatibility acceptance criteria
+    source_issue_ids: [RCA-1]
+    input_refs:
+      - eval-generation/eval-generation-workflow/template-gaps/tasks-gaps.md#GAP-TK-1
+    prompt: >
+      Evaluate a task whose objective traces to a spec FR/SC requiring "no behavior change for
+      non-opted-in/default-path resources." Does its §4 Acceptance criteria require an exact-value
+      (byte-for-byte or field-by-field) regression test against a documented pre-feature baseline,
+      rather than only a test asserting equivalent effective/functional behavior?
+    assertions:
+      - type: must_define_acceptance_criteria
+        value: >
+          Acceptance criteria for the task require an exact-value regression comparison against a
+          documented pre-feature baseline, not merely functional equivalence.
+      - type: must_cover_all_spec_requirements
+        value: "backward-compatibility FR/SC"
+    scoring:
+      pass_threshold: 80
+      weight: 1.0
+
+  - id: eval-r001-tasks-002
+    round: 1
+    stage: tasks
+    title: Carried-forward risk/UNVERIFIED items resolve into a task or explicit deferral
+    source_issue_ids: [RCA-2]
+    input_refs:
+      - eval-generation/eval-generation-workflow/template-gaps/tasks-gaps.md#GAP-TK-2
+    prompt: >
+      Evaluate §0 Input Coverage Checklist for its accounting of carried-forward repo-assessment
+      §11.1 items and plan §7/§8 risks/open-questions. Does every such item map to a covering Task ID,
+      or an explicit "deferred — tracked as follow-up (reason)" note in §5 Orchestration Notes?
+    assertions:
+      - type: must_cover_all_spec_requirements
+        value: "carried-forward risks / UNVERIFIED items"
+      - type: must_identify_pattern
+        value: >
+          Every carried-forward UNVERIFIED/risk item has either a covering Task ID or an explicit
+          deferral note with a stated reason — none are silently dropped.
+    scoring:
+      pass_threshold: 80
+      weight: 1.0
+
+  - id: eval-r001-tasks-003
+    round: 1
+    stage: tasks
+    title: Dependency-bump tasks budget for sibling version-skew risk
+    source_issue_ids: [RCA-3]
+    input_refs:
+      - eval-generation/eval-generation-workflow/template-gaps/tasks-gaps.md#GAP-TK-3
+    prompt: >
+      Evaluate a task whose objective is bumping a vendored dependency that is part of a co-versioned
+      library family (per repo-assessment §6). Does its §4 Implementation notes state the
+      sibling-library version-skew risk and a fallback step, as an anticipated outcome rather than an
+      unbudgeted surprise?
+    assertions:
+      - type: must_define_acceptance_criteria
+        value: >
+          Implementation notes for dependency-bump tasks in a co-versioned library family state the
+          sibling version-skew risk and fallback step explicitly.
+    scoring:
+      pass_threshold: 70
+      weight: 0.8
+
+  - id: eval-r001-tasks-004
+    round: 1
+    stage: tasks
+    title: Error-path test acceptance criteria specify which guard clause the fixture bypasses
+    source_issue_ids: [RCA-4]
+    input_refs:
+      - eval-generation/eval-generation-workflow/template-gaps/tasks-gaps.md#GAP-TK-4
+    prompt: >
+      Evaluate a task requiring an error-path/failure-path unit test on a function with multiple
+      sequential guard clauses. Does its §4 Acceptance criteria state which prior guard clause(s) the
+      test fixture is constructed to pass through before reaching the target branch under test?
+    assertions:
+      - type: must_define_acceptance_criteria
+        value: >
+          Acceptance criteria for error-path unit tests on multi-guard-clause functions state which
+          guard clause(s) the fixture bypasses to reach the intended branch.
+    scoring:
+      pass_threshold: 70
+      weight: 0.7
+
+  - id: eval-r001-tasks-005
+    round: 1
+    stage: tasks
+    title: AgentRoutingMode and agent assignment consistent with constitution.md
+    source_issue_ids: [RCA-8]
+    input_refs:
+      - eval-generation/eval-generation-workflow/template-gaps/agents-gaps.md#GAP-AG-1
+    prompt: >
+      Evaluate whether the backlog header's AgentRoutingMode matches constitution.md (PROVIDED vs
+      PROVISIONAL), and whether every Assigned Agent value used in §3/§4 exists in agents.md when
+      PROVIDED, rather than falling back to provisional IDs when a real routing table is available.
+    assertions:
+      - type: must_assign_agent
+        value: "AgentRoutingMode matches constitution.md; Assigned Agent values exist in agents.md when PROVIDED"
+    scoring:
+      pass_threshold: 75
+      weight: 0.8
