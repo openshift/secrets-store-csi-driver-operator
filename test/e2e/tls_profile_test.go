@@ -576,8 +576,14 @@ func runTLSScenario(ctx context.Context, tc tlsScenario, lastUID *string) {
 	case wireHTTPSOK:
 		// Retried: a freshly (re)started pod's NetworkPolicy ingress ACLs can
 		// take a moment to converge on OVN-Kubernetes, which otherwise shows
-		// up as a flaky "i/o timeout" on the very first dial.
-		Expect(waitForDialTLS(ctx, addr, tls.VersionTLS12, tls.VersionTLS13)).To(Succeed(), "HTTPS dial %s", addr)
+		// up as a flaky "i/o timeout" on the very first dial. If the whole
+		// retry budget is exhausted, dump network diagnostics before failing
+		// so the artifacts show whether this was slow convergence or a hard
+		// block (see dumpNetworkDiagnostics).
+		if dialErr := waitForDialTLS(ctx, addr, tls.VersionTLS12, tls.VersionTLS13); dialErr != nil {
+			dumpNetworkDiagnostics(ctx, pod)
+			Fail(fmt.Sprintf("HTTPS dial %s: %v", addr, dialErr))
+		}
 		if tc.id == "A3" {
 			Expect(waitForScrapeOperatorMetrics(ctx, pod.IP)).To(Succeed())
 		}
