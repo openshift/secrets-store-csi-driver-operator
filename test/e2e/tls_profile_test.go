@@ -91,6 +91,8 @@ var _ = Describe("TLS profile adherence", Label("tls"), Ordered, func() {
 	BeforeAll(func() {
 		ctx = context.Background()
 
+		Expect(ensureExecClientPod(ctx)).To(Succeed(), "create exec-client pod for in-cluster wire checks")
+
 		var err error
 		original, err = getClusterAPIServerTLSConfig(ctx)
 		if apierrors.IsNotFound(err) {
@@ -116,11 +118,13 @@ var _ = Describe("TLS profile adherence", Label("tls"), Ordered, func() {
 	})
 
 	AfterAll(func() {
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+		defer cancel()
+		deleteExecClientPod(cleanupCtx)
+
 		if original == nil {
 			return
 		}
-		cleanupCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-		defer cancel()
 		if err := restoreClusterAPIServerTLSConfig(cleanupCtx, original); err != nil {
 			GinkgoWriter.Printf("warning: restore apiserver TLS config: %v\n", err)
 		}
@@ -166,6 +170,18 @@ var _ = Describe("TLS profile adherence", Label("tls"), Ordered, func() {
 			expectRestart: true,
 			wire:          wireHTTPSOK,
 		}),
+		// B2 is expected to always Skip (not truly exercised) on any real cluster:
+		// the APIServer CRD has a CEL rule, "tlsAdherence may not be removed once
+		// set" (see vendor/github.com/openshift/api/config/v1/types_apiserver.go),
+		// which permanently forbids unsetting tlsAdherence back to empty/NoOpinion
+		// once it has ever been set to a non-nil value. BeforeAll's own support
+		// probe -- plus A1/A2/A3/B1 above, which all set a real non-nil adherence
+		// before B2 runs -- already trip that rule well before this entry executes,
+		// on every run. Reordering entries within this table would not help, since
+		// BeforeAll's probe alone is sufficient to lock the field. Genuinely
+		// exercising this case would require a dry-run probe in BeforeAll *and*
+		// making B2 the very first real update to the object, or testing the
+		// operator's "no opinion" defaulting logic at the unit level instead.
 		Entry("B2 empty adherence keeps Controllercmd defaults", tlsScenario{
 			id:            "B2",
 			name:          "empty adherence keeps Controllercmd defaults",
@@ -537,6 +553,8 @@ func runTLSScenario(ctx context.Context, tc tlsScenario, lastUID *string) {
 			return
 		}
 		if tc.id == "B2" && err != nil {
+			// Expected every run: see the comment on the B2 Entry above for why
+			// this is structurally unreachable rather than flaky.
 			Skip(fmt.Sprintf("B2: cannot set empty tlsAdherence on this cluster: %v", err))
 		}
 		Expect(err).NotTo(HaveOccurred(), "update apiserver TLS")
@@ -571,12 +589,20 @@ func runTLSScenario(ctx context.Context, tc tlsScenario, lastUID *string) {
 		}
 	}
 
-	addr := net.JoinHostPort(pod.IP, fmt.Sprintf("%d", operatorMetricsPort))
+	// Dial the metrics Service's in-cluster DNS name rather than the pod IP
+	// directly: this is the same path a real client (e.g. Prometheus) would
+	// use, and avoids depending on the NetworkPolicy/OVN ACL state of one
+	// specific pod IP after a (re)start (see operatorMetricsFQDN). This FQDN
+	// is only resolvable from inside the cluster, which is why dialTLS/
+	// waitForScrapeOperatorMetrics exec curl inside execClientPodName
+	// (see exec_client_test.go) instead of dialing straight from Ginkgo,
+	// which runs outside the cluster's pod/Service network entirely.
+	addr := net.JoinHostPort(operatorMetricsFQDN(), fmt.Sprintf("%d", operatorMetricsServicePort))
 	switch tc.wire {
 	case wireHTTPSOK:
 		// Retried: a freshly (re)started pod's NetworkPolicy ingress ACLs can
 		// take a moment to converge on OVN-Kubernetes, which otherwise shows
-		// up as a flaky "i/o timeout" on the very first dial. If the whole
+		// up as a flaky failure on the very first attempt. If the whole
 		// retry budget is exhausted, dump network diagnostics before failing
 		// so the artifacts show whether this was slow convergence or a hard
 		// block (see dumpNetworkDiagnostics).
@@ -585,13 +611,13 @@ func runTLSScenario(ctx context.Context, tc tlsScenario, lastUID *string) {
 			Fail(fmt.Sprintf("HTTPS dial %s: %v", addr, dialErr))
 		}
 		if tc.id == "A3" {
-			Expect(waitForScrapeOperatorMetrics(ctx, pod.IP)).To(Succeed())
+			Expect(waitForScrapeOperatorMetrics(ctx, addr)).To(Succeed())
 		}
 	case wireModernTLS13Only:
 		Expect(waitForDialTLS(ctx, addr, tls.VersionTLS13, tls.VersionTLS13)).To(Succeed(), "TLS1.3 dial should succeed")
 		// Expected to fail (protocol version rejection, not a network drop):
 		// a single attempt is correct here, retrying would just waste time.
-		Expect(dialTLS(addr, tls.VersionTLS12, tls.VersionTLS12)).NotTo(Succeed(), "TLS1.2 dial should fail under Modern profile")
+		Expect(dialTLS(ctx, addr, tls.VersionTLS12, tls.VersionTLS12)).NotTo(Succeed(), "TLS1.2 dial should fail under Modern profile")
 	case wirePlaintextOperand:
 		// handled in dedicated E1 It
 	}
