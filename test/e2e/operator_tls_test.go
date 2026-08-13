@@ -36,6 +36,19 @@ const (
 	stableWaitWindow = 20 * time.Second
 )
 
+// operatorMetricsFQDN returns the in-cluster DNS name for the operator's
+// metrics Service (e.g.
+// secrets-store-csi-driver-operator-metrics.openshift-cluster-csi-drivers.svc).
+// Wire checks dial this instead of the pod IP directly: Service traffic is
+// resolved via cluster DNS and load-balanced by kube-proxy/OVN through the
+// Service's ClusterIP+port (operatorMetricsServicePort), a different network
+// path than a raw pod-IP dial -- useful for telling apart a problem specific
+// to routing/ACLs on that one pod IP from a problem with the operator's TLS
+// listener itself.
+func operatorMetricsFQDN() string {
+	return fmt.Sprintf("%s.%s.svc.cluster.local", operatorMetricsServiceName, operatorNamespace)
+}
+
 type operatorPod struct {
 	Name string
 	UID  string
@@ -213,34 +226,23 @@ func waitForOperatorLogContains(ctx context.Context, podName string, substrings 
 	})
 }
 
-func assertPlaintextHTTP(podIP string, port int) (err error) {
+// assertPlaintextHTTP execs curl inside execClientPodName (see
+// exec_client_test.go) to confirm addr speaks plaintext HTTP: requesting
+// http://addr against a TLS listener fails curl's HTTP response parsing
+// (nonzero exit) rather than returning a 200, so a clean 2xx/3xx already
+// proves this wasn't silently upgraded to TLS.
+func assertPlaintextHTTP(ctx context.Context, podIP string, port int) error {
 	addr := net.JoinHostPort(podIP, fmt.Sprintf("%d", port))
-	conn, err := net.DialTimeout("tcp", addr, wireDialTimeout)
+	args := []string{
+		"curl", "-sS", "-o", "/dev/null", "-w", "%{http_code}",
+		"--max-time", fmt.Sprintf("%d", int(wireDialTimeout.Seconds())),
+		"http://" + addr + "/metrics",
+	}
+	stdout, stderr, err := execInClientPod(ctx, args)
 	if err != nil {
-		return fmt.Errorf("failed to dial tcp %s: %w", addr, err)
+		return fmt.Errorf("curl http://%s/metrics failed (exit=%d) stdout=%q stderr=%q: %w", addr, curlExitCode(err), stdout, stderr, err)
 	}
-	defer func() {
-		if cerr := conn.Close(); err == nil && cerr != nil {
-			err = fmt.Errorf("failed to close connection: %w", err)
-		}
-	}()
-	if err := conn.SetDeadline(time.Now().Add(wireDialTimeout)); err != nil {
-		return fmt.Errorf("failed to set connection deadline: %w", err)
-	}
-	if _, err := conn.Write([]byte("GET /metrics HTTP/1.0\r\nHost: localhost\r\n\r\n")); err != nil {
-		return err
-	}
-	buf := make([]byte, 256)
-	n, err := conn.Read(buf)
-	if err != nil && err != io.EOF {
-		return err
-	}
-	resp := string(buf[:n])
-	if strings.HasPrefix(resp, "HTTP/") {
-		return nil
-	}
-	// TLS would typically start with 0x16 0x03; treat non-HTTP as failure.
-	return fmt.Errorf("failed to verify plaintext HTTP on %s, got %q", addr, truncate(resp, 80))
+	return nil
 }
 
 // waitForPlaintextHTTP retries assertPlaintextHTTP for wireRetryTimeout; see
@@ -248,8 +250,8 @@ func assertPlaintextHTTP(podIP string, port int) (err error) {
 // NetworkPolicy/OVN convergence window instead of failing on one attempt.
 func waitForPlaintextHTTP(ctx context.Context, podIP string, port int) error {
 	var lastErr error
-	err := wait.PollUntilContextTimeout(ctx, pollInterval, wireRetryTimeout, true, func(context.Context) (bool, error) {
-		if lastErr = assertPlaintextHTTP(podIP, port); lastErr != nil {
+	err := wait.PollUntilContextTimeout(ctx, pollInterval, wireRetryTimeout, true, func(ctx context.Context) (bool, error) {
+		if lastErr = assertPlaintextHTTP(ctx, podIP, port); lastErr != nil {
 			return false, nil
 		}
 		return true, nil

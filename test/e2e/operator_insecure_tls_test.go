@@ -4,48 +4,73 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
-	"io"
-	"net"
-	"net/http"
 	"os"
+	"strconv"
 	"strings"
 
 	"k8s.io/apimachinery/pkg/util/wait"
 )
 
 // dialTLS and scrapeOperatorMetrics intentionally disable certificate
-// verification because the OpenShift service-CA is not mounted in the e2e
-// process. Kept in this file so Snyk can exclude just these helpers.
+// verification (curl -k) because the OpenShift service-CA is not mounted
+// in the exec-client pod. Kept in this file so Snyk can exclude just these
+// helpers.
+//
+// Both run curl inside execClientPodName (see exec_client_test.go) rather
+// than dialing from the Ginkgo process directly, since Ginkgo has no route
+// to the target cluster's pod/Service network.
 
-func dialTLS(addr string, minVersion, maxVersion uint16) error {
-	cfg := &tls.Config{
-		InsecureSkipVerify: true, // service-CA not mounted in the test process
-		MinVersion:         minVersion,
-		MaxVersion:         maxVersion,
+// curlTLSVersionFlags maps a tls.VersionTLS* min/max pair to curl's
+// --tlsv1.x/--tls-max flags, mirroring the crypto/tls MinVersion/MaxVersion
+// pair these checks used when dialing directly.
+func curlTLSVersionFlags(minVersion, maxVersion uint16) ([]string, error) {
+	names := map[uint16]string{
+		tls.VersionTLS12: "1.2",
+		tls.VersionTLS13: "1.3",
 	}
-	dialer := &net.Dialer{Timeout: wireDialTimeout}
-	conn, err := tls.DialWithDialer(dialer, "tcp", addr, cfg)
+	minStr, ok := names[minVersion]
+	if !ok {
+		return nil, fmt.Errorf("unsupported curl min TLS version 0x%x", minVersion)
+	}
+	maxStr, ok := names[maxVersion]
+	if !ok {
+		return nil, fmt.Errorf("unsupported curl max TLS version 0x%x", maxVersion)
+	}
+	return []string{"--tlsv" + minStr, "--tls-max", maxStr}, nil
+}
+
+func dialTLS(ctx context.Context, addr string, minVersion, maxVersion uint16) error {
+	verFlags, err := curlTLSVersionFlags(minVersion, maxVersion)
 	if err != nil {
 		return err
 	}
-	if err := conn.Close(); err != nil {
-		return fmt.Errorf("failed to close TLS connection: %w", err)
+	args := append([]string{
+		"curl", "-sS", "-k",
+		"--max-time", strconv.Itoa(int(wireDialTimeout.Seconds())),
+	}, verFlags...)
+	// -o discards the body and -w prints just the status code: this check
+	// only cares that the TLS handshake completed, not the HTTP outcome
+	// (curl exits 0 on any completed HTTP response, 401/403 included).
+	args = append(args, "-o", "/dev/null", "-w", "%{http_code}", "https://"+addr+"/metrics")
+
+	stdout, stderr, err := execInClientPod(ctx, args)
+	if err != nil {
+		return fmt.Errorf("curl https://%s failed (exit=%d) stdout=%q stderr=%q: %w", addr, curlExitCode(err), stdout, stderr, err)
 	}
 	return nil
 }
 
 // waitForDialTLS retries dialTLS for wireRetryTimeout. A freshly created (or
-// just-restarted) pod's NetworkPolicy ACLs can take a moment to converge on
-// OVN-Kubernetes, which manifests as a transient "i/o timeout" rather than
-// "connection refused" on the very first dial attempt right after an
-// install/update. Every other cluster-state wait in this suite already
-// retries (see pollInterval/pollTimeout in helpers_test.go); the raw wire
-// checks are wrapped the same way here for consistency and to avoid flaking
-// on that convergence window.
+// just-restarted) pod's NetworkPolicy ingress ACLs can take a moment to
+// converge on OVN-Kubernetes, which can otherwise show up as a flaky
+// failure on the very first attempt. Every other cluster-state wait in
+// this suite already retries (see pollInterval/pollTimeout in
+// helpers_test.go); this wire check is wrapped the same way for
+// consistency and to tolerate that convergence window.
 func waitForDialTLS(ctx context.Context, addr string, minVersion, maxVersion uint16) error {
 	var lastErr error
-	err := wait.PollUntilContextTimeout(ctx, pollInterval, wireRetryTimeout, true, func(context.Context) (bool, error) {
-		if lastErr = dialTLS(addr, minVersion, maxVersion); lastErr != nil {
+	err := wait.PollUntilContextTimeout(ctx, pollInterval, wireRetryTimeout, true, func(ctx context.Context) (bool, error) {
+		if lastErr = dialTLS(ctx, addr, minVersion, maxVersion); lastErr != nil {
 			return false, nil
 		}
 		return true, nil
@@ -56,39 +81,23 @@ func waitForDialTLS(ctx context.Context, addr string, minVersion, maxVersion uin
 	return nil
 }
 
-func scrapeOperatorMetrics(ctx context.Context, podIP string) (err error) {
-	tr := &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-	}
-	client := &http.Client{Transport: tr, Timeout: wireDialTimeout}
-	url := fmt.Sprintf("https://%s/metrics", net.JoinHostPort(podIP, fmt.Sprintf("%d", operatorMetricsPort)))
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return err
-	}
+func scrapeOperatorMetrics(ctx context.Context, addr string) error {
 	token, err := metricsBearerToken()
 	if err != nil {
 		return err
 	}
-	req.Header.Set("Authorization", "Bearer "+token)
-	resp, err := client.Do(req)
+	args := []string{
+		"curl", "-sS", "-k", "-f",
+		"--max-time", strconv.Itoa(int(wireDialTimeout.Seconds())),
+		"-H", "Authorization: Bearer " + token,
+		"https://" + addr + "/metrics",
+	}
+	stdout, stderr, err := execInClientPod(ctx, args)
 	if err != nil {
-		return err
+		return fmt.Errorf("curl https://%s/metrics failed (exit=%d) stderr=%q: %w", addr, curlExitCode(err), stderr, err)
 	}
-	defer func() {
-		if cerr := resp.Body.Close(); err == nil && cerr != nil {
-			err = fmt.Errorf("failed to close metrics response body: %w", cerr)
-		}
-	}()
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-	if err != nil {
-		return err
-	}
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("failed to check metrics response status: got %d: %s", resp.StatusCode, truncate(string(body), 200))
-	}
-	if !strings.Contains(string(body), "# HELP") && !strings.Contains(string(body), "# TYPE") {
-		return fmt.Errorf("failed to find prometheus markers in metrics body: %s", truncate(string(body), 200))
+	if !strings.Contains(stdout, "# HELP") && !strings.Contains(stdout, "# TYPE") {
+		return fmt.Errorf("failed to find prometheus markers in metrics body: %s", truncate(stdout, 200))
 	}
 	return nil
 }
@@ -97,16 +106,16 @@ func scrapeOperatorMetrics(ctx context.Context, podIP string) (err error) {
 // wireRetryTimeout; see waitForDialTLS for why raw wire checks need to
 // tolerate a brief NetworkPolicy/OVN convergence window instead of failing
 // on one attempt.
-func waitForScrapeOperatorMetrics(ctx context.Context, podIP string) error {
+func waitForScrapeOperatorMetrics(ctx context.Context, addr string) error {
 	var lastErr error
 	err := wait.PollUntilContextTimeout(ctx, pollInterval, wireRetryTimeout, true, func(ctx context.Context) (bool, error) {
-		if lastErr = scrapeOperatorMetrics(ctx, podIP); lastErr != nil {
+		if lastErr = scrapeOperatorMetrics(ctx, addr); lastErr != nil {
 			return false, nil
 		}
 		return true, nil
 	})
 	if err != nil {
-		return fmt.Errorf("failed to scrape operator metrics on %s within %s: %w", podIP, wireRetryTimeout, lastErr)
+		return fmt.Errorf("failed to scrape operator metrics on %s within %s: %w", addr, wireRetryTimeout, lastErr)
 	}
 	return nil
 }
