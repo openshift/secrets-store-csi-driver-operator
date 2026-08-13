@@ -95,12 +95,16 @@ evals:
     input_refs:
       - eval-generation/eval-generation-workflow/template-gaps/agents-gaps.md#GAP-AG-1
     prompt: >
-      Evaluate whether the backlog header's AgentRoutingMode matches constitution.md (PROVIDED vs
-      PROVISIONAL), and whether every Assigned Agent value used in §3/§4 exists in agents.md when
-      PROVIDED, rather than falling back to provisional IDs when a real routing table is available.
+      Evaluate whether the backlog header's AgentRoutingMode matches constitution.md's declared mode
+      (PROVIDED vs PROVISIONAL). When PROVISIONAL, does every Assigned Agent value used in §3/§4 exist
+      in constitution.md's Agent Routing table (the canonical reference for provisional IDs), rather
+      than being invented ad hoc or checked against AGENTS.md directly (which has no explicit
+      agent-ID table)?
     assertions:
       - type: must_assign_agent
-        value: "AgentRoutingMode matches constitution.md; Assigned Agent values exist in agents.md when PROVIDED"
+        value: >
+          AgentRoutingMode matches constitution.md; when PROVISIONAL, Assigned Agent values exist in
+          constitution.md's Agent Routing table rather than AGENTS.md
     scoring:
       pass_threshold: 75
       weight: 0.8

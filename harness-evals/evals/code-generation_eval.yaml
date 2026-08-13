@@ -129,19 +129,19 @@ evals:
       - type: must_pass_make_targets
         value: true
       - type: must_execute_verification
-        value: "go build ./... after any dependency bump, checked for sibling version-skew failures"
+        value: "make verify after any dependency bump (validates vendor/ matches go.mod), plus go build ./..., checked for sibling version-skew failures"
     scoring:
       pass_threshold: 80
 
   - id: eval-r001-codegen-008
     round: 1
     oape_command: any
-    title: Tier 1 tasks co-generate test files following the agents.md exemplar pattern
+    title: Tier 1 tasks co-generate test files following the AGENTS.md exemplar pattern
     source_issue_ids: [RCA-4]
     prompt: >
       For any Tier 1 task (controller logic, webhook/validation code, or manual Go helper with
       exported logic), was a matching _test.go file co-generated in the same package, following the
-      test exemplar pattern defined in agents.md, with both positive and error-path cases?
+      test exemplar pattern defined in AGENTS.md, with both positive and error-path cases?
     assertions:
       - type: must_co_generate_tests
         value: true

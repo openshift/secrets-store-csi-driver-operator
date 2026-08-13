@@ -2,8 +2,8 @@
 
 # secrets-store-csi-driver-operator Constitution
 
-**AgentRoutingMode:** PROVIDED
-<!-- AGENTS.md exists at repo root; it documents component ownership by directory/pattern rather than explicit agent IDs, so routing below is derived from its "Core Components" and "Critical Patterns" sections plus observable directory structure. -->
+**AgentRoutingMode:** PROVISIONAL
+<!-- AGENTS.md exists at repo root but documents component ownership by directory/pattern, not an explicit agent-ID table. The Agent IDs below (OperatorController_Agent, etc.) are therefore derived/provisional — inferred from AGENTS.md's "Core Components"/"Critical Patterns" sections plus observable directory structure, not literal identifiers sourced from AGENTS.md. Downstream stages must validate agent assignments against this constitution's Agent Routing table, not against AGENTS.md directly. -->
 
 **Version**: 1.0.0 | **Ratified**: 2026-08-12 | **Last Amended**: 2026-08-12
 
@@ -84,7 +84,7 @@ All dependencies are vendored under `vendor/`. Adding a dependency requires `go 
 - **FIPS builds:** CI/production builds use `GOEXPERIMENT=strictfipsruntime` with `CGO_ENABLED=1`; local non-FIPS builds succeed but are not valid for CI. — **Evidence:** `harness-evals/harness-docs/SECRETS_STORE_DEVELOPMENT.md` "FIPS Build"
 - **No `.golangci.yaml` present:** verification relies on `go vet` + `gofmt` + Go-version consistency (vendored `build-machinery-go` makefiles), not `golangci-lint`. — **Evidence:** repo root listing (no `.golangci*` file); `harness-evals/harness-docs/guidelines/testing-guidelines.md` "Code Verification"
 - **Container base image:** multi-stage build — RHEL9 golang builder → `registry.ci.openshift.org/ocp/5.0:base-rhel9` runtime, non-root entrypoint binary only (no shell tooling copied in). — **Evidence:** `Dockerfile.openshift`
-- **Resource-only DaemonSet requests, no limits:** node-plugin containers set `cpu`/`memory` requests but omit limits to allow burst. — **Evidence:** `assets/node.yaml`; `harness-evals/harness-docs/guidelines/performance-guidelines.md`
+- **DaemonSet containers must define both `resources.requests` and `resources.limits` (cpu, memory):** current `assets/node.yaml` sets requests only on all three containers — this is a known gap to close, not a pattern to replicate in new/modified containers. — **Evidence:** `assets/node.yaml`; Kubernetes manifest policy (resource limits required on every container)
 - **Utilities live in `pkg/operator/`:** no separate `pkg/util/` package; constants are co-located with usage in `pkg/operator/starter.go`. — **Evidence:** `harness-evals/harness-docs/SECRETS_STORE_DEVELOPMENT.md` "Directory Structure for Development"
 
 ## Development Workflow
@@ -103,9 +103,11 @@ All dependencies are vendored under `vendor/`. Adding a dependency requires `go 
 
 ## Agent Routing
 
-<!-- PROVIDED: AGENTS.md exists but documents ownership by directory/pattern rather than
-     an explicit agent-ID table. Routing below is derived from AGENTS.md's "Core Components"
-     and repo directory structure. -->
+<!-- PROVISIONAL: AGENTS.md exists but documents ownership by directory/pattern rather than
+     an explicit agent-ID table. The Agent IDs below are derived from AGENTS.md's "Core Components"
+     and repo directory structure — they are not literal identifiers found in AGENTS.md. This table
+     is the canonical reference for agent-assignment validation until AGENTS.md gains an explicit
+     agent-ID table. -->
 
 | Agent ID | Scope | When to route |
 |----------|-------|---------------|
