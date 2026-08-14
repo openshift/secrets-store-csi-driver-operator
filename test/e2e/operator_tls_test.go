@@ -18,7 +18,20 @@ import (
 
 const (
 	operatorTimeout = 5 * time.Minute
-	wireDialTimeout = 15 * time.Second
+	// operatorRestartTimeout bounds waitForOperatorRestart specifically. The
+	// operator reconfigures its HTTPS metrics listener by exiting the
+	// process (RequestShutdown/os.Exit) and relying on kubelet to restart
+	// the container under restartPolicy: Always. Kubelet does not
+	// distinguish this graceful exit from a crash, so it applies its usual
+	// per-container restart backoff (10s, 20s, 40s, ... capped at 300s --
+	// confirmed via "Back-off restarting failed container" pod events),
+	// throttling how soon the container comes back up. In a suite that
+	// flips the TLS profile/adherence repeatedly within a few minutes (the
+	// scenario matrix below, plus D1-D5), later restarts reliably ride the
+	// full 300s cap. operatorTimeout (5m) races that cap almost exactly, so
+	// restart-waits get their own budget with headroom above it.
+	operatorRestartTimeout = 7 * time.Minute
+	wireDialTimeout        = 15 * time.Second
 	// wireRetryTimeout bounds retries of raw TCP/TLS wire checks (dialTLS,
 	// assertPlaintextHTTP, scrapeOperatorMetrics) against a just-installed or
 	// just-restarted pod, tolerating transient NetworkPolicy/OVN ACL
@@ -53,6 +66,13 @@ type operatorPod struct {
 	Name string
 	UID  string
 	IP   string
+	// RestartKey identifies a specific instance of the operator container.
+	// The operator restarts via graceful shutdown (RequestShutdown/os.Exit),
+	// which kubelet handles as an in-place container restart -- the owning
+	// Pod object (and its UID) is unchanged, only ContainerStatuses[i].
+	// ContainerID and RestartCount change. Callers that need to detect a
+	// restart must key off RestartKey, not UID.
+	RestartKey string
 }
 
 func waitForOperatorReady(ctx context.Context) (*operatorPod, error) {
@@ -110,21 +130,38 @@ func getOperatorPod(ctx context.Context) (*operatorPod, error) {
 			newest = p
 		}
 	}
+	var restartKey string
+	for _, cs := range newest.Status.ContainerStatuses {
+		if cs.Name != operatorContainerName {
+			continue
+		}
+		// ContainerID is unique per container instance and changes on every
+		// restart, unlike the Pod UID. Fall back to a UID+RestartCount
+		// composite if ContainerID isn't populated yet (e.g. container still
+		// starting), so early polls don't spuriously match a later restart.
+		if cs.ContainerID != "" {
+			restartKey = cs.ContainerID
+		} else {
+			restartKey = fmt.Sprintf("%s/%d", newest.UID, cs.RestartCount)
+		}
+		break
+	}
 	return &operatorPod{
-		Name: newest.Name,
-		UID:  string(newest.UID),
-		IP:   newest.Status.PodIP,
+		Name:       newest.Name,
+		UID:        string(newest.UID),
+		IP:         newest.Status.PodIP,
+		RestartKey: restartKey,
 	}, nil
 }
 
-func waitForOperatorRestart(ctx context.Context, previousUID string) (*operatorPod, error) {
+func waitForOperatorRestart(ctx context.Context, previousRestartKey string) (*operatorPod, error) {
 	var ready *operatorPod
-	err := wait.PollUntilContextTimeout(ctx, pollInterval, operatorTimeout, true, func(ctx context.Context) (bool, error) {
+	err := wait.PollUntilContextTimeout(ctx, pollInterval, operatorRestartTimeout, true, func(ctx context.Context) (bool, error) {
 		pod, err := getOperatorPod(ctx)
 		if err != nil {
 			return false, nil
 		}
-		if previousUID != "" && pod.UID == previousUID {
+		if pod.RestartKey == "" || (previousRestartKey != "" && pod.RestartKey == previousRestartKey) {
 			return false, nil
 		}
 		if pod.IP == "" {
@@ -134,17 +171,21 @@ func waitForOperatorRestart(ctx context.Context, previousUID string) (*operatorP
 		return true, nil
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to wait for operator restart (still uid=%s): %w", previousUID, err)
+		return nil, fmt.Errorf("failed to wait for operator restart (still restartKey=%s): %w", previousRestartKey, err)
 	}
 	return ready, nil
 }
 
-func assertOperatorUIDStable(ctx context.Context, uid string) {
+// assertOperatorRestartKeyStable asserts the operator container does not
+// restart for stableWaitWindow. It must key off RestartKey rather than Pod
+// UID: the operator's graceful-shutdown restart keeps the same Pod object
+// (and UID), so a UID comparison here would never catch an unwanted restart.
+func assertOperatorRestartKeyStable(ctx context.Context, restartKey string) {
 	deadline := time.Now().Add(stableWaitWindow)
 	for time.Now().Before(deadline) {
 		pod, err := getOperatorPod(ctx)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(pod.UID).To(Equal(uid), "operator restarted unexpectedly: old uid=%s new uid=%s name=%s", uid, pod.UID, pod.Name)
+		Expect(pod.RestartKey).To(Equal(restartKey), "operator restarted unexpectedly: old restartKey=%s new restartKey=%s name=%s", restartKey, pod.RestartKey, pod.Name)
 		select {
 		case <-ctx.Done():
 			Fail(fmt.Sprintf("context canceled while asserting stability: %v", ctx.Err()))
@@ -154,14 +195,28 @@ func assertOperatorUIDStable(ctx context.Context, uid string) {
 }
 
 // dumpNetworkDiagnostics logs the NetworkPolicies in effect in
-// operatorNamespace, pod's node placement, and its recent events. Call this
-// right before failing a wire check (dialTLS/scrapeOperatorMetrics/
-// assertPlaintextHTTP) that exhausted its retry budget, so the resulting
-// artifacts can distinguish a slow-converging ACL (would eventually pass
-// with a longer budget, and diagnostics here look unremarkable) from a hard
-// block (diagnostics will show a NetworkPolicy whose ingress rules don't
-// cover the caller, or a pod stuck NotReady/misplaced).
+// operatorNamespace, pod's node placement, its recent events, and the
+// operator container's own logs. Call this right before failing a wire check
+// (dialTLS/scrapeOperatorMetrics/assertPlaintextHTTP) that exhausted its
+// retry budget, so the resulting artifacts can distinguish a slow-converging
+// ACL (would eventually pass with a longer budget, and diagnostics here look
+// unremarkable) from a hard block (diagnostics will show a NetworkPolicy
+// whose ingress rules don't cover the caller, or a pod stuck
+// NotReady/misplaced) from an application-level delay (the logs won't yet
+// show the metrics server having started serving).
 func dumpNetworkDiagnostics(ctx context.Context, pod *operatorPod) {
+	// Logs are scoped to the current container instance (kubelet doesn't
+	// return --previous logs here), so the first bytes cover the startup
+	// sequence since the last restart -- exactly what's needed to tell
+	// whether the metrics server had started serving by the time the dial
+	// gave up.
+	if logs, err := operatorLogs(ctx, pod.Name); err == nil {
+		GinkgoWriter.Printf("[diagnostics] operator logs for pod %s (first 4000 bytes since last restart):\n%s\n",
+			pod.Name, truncate(logs, 4000))
+	} else {
+		GinkgoWriter.Printf("[diagnostics] failed to get operator logs for pod %s: %v\n", pod.Name, err)
+	}
+
 	if nps, err := kubeClient.NetworkingV1().NetworkPolicies(operatorNamespace).List(ctx, metav1.ListOptions{}); err == nil {
 		for _, np := range nps.Items {
 			GinkgoWriter.Printf("[diagnostics] NetworkPolicy %s/%s podSelector=%v ingress=%+v\n",
