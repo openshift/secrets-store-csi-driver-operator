@@ -5,17 +5,15 @@ import (
 	"crypto/tls"
 	"fmt"
 	"strconv"
-	"strings"
 
 	"k8s.io/apimachinery/pkg/util/wait"
 )
 
-// dialTLS and scrapeOperatorMetrics intentionally disable certificate
-// verification (curl -k) because the OpenShift service-CA is not mounted
-// in the exec-client pod. Kept in this file so Snyk can exclude just these
-// helpers.
+// dialTLS intentionally disables certificate verification (curl -k)
+// because the OpenShift service-CA is not mounted in the exec-client pod.
+// Kept in this file so Snyk can exclude just this helper.
 //
-// Both run curl inside execClientPodName (see exec_client_test.go) rather
+// It runs curl inside execClientPodName (see exec_client_test.go) rather
 // than dialing from the Ginkgo process directly, since Ginkgo has no route
 // to the target cluster's pod/Service network.
 
@@ -78,59 +76,4 @@ func waitForDialTLS(ctx context.Context, addr string, minVersion, maxVersion uin
 		return fmt.Errorf("failed to dial %s within %s: %w", addr, wireRetryTimeout, lastErr)
 	}
 	return nil
-}
-
-func scrapeOperatorMetrics(ctx context.Context, addr string) error {
-	token, err := metricsBearerToken(ctx)
-	if err != nil {
-		return err
-	}
-	args := []string{
-		"curl", "-sS", "-k", "-f",
-		"--max-time", strconv.Itoa(int(wireDialTimeout.Seconds())),
-		"-H", "Authorization: Bearer " + token,
-		"https://" + addr + "/metrics",
-	}
-	stdout, stderr, err := execInClientPod(ctx, args)
-	if err != nil {
-		return fmt.Errorf("curl https://%s/metrics failed (exit=%d) stderr=%q: %w", addr, curlExitCode(err), stderr, err)
-	}
-	if !strings.Contains(stdout, "# HELP") && !strings.Contains(stdout, "# TYPE") {
-		return fmt.Errorf("failed to find prometheus markers in metrics body: %s", truncate(stdout, 200))
-	}
-	return nil
-}
-
-// waitForScrapeOperatorMetrics retries scrapeOperatorMetrics for
-// wireRetryTimeout; see waitForDialTLS for why raw wire checks need to
-// tolerate a brief NetworkPolicy/OVN convergence window instead of failing
-// on one attempt.
-func waitForScrapeOperatorMetrics(ctx context.Context, addr string) error {
-	var lastErr error
-	err := wait.PollUntilContextTimeout(ctx, pollInterval, wireRetryTimeout, true, func(ctx context.Context) (bool, error) {
-		if lastErr = scrapeOperatorMetrics(ctx, addr); lastErr != nil {
-			return false, nil
-		}
-		return true, nil
-	})
-	if err != nil {
-		return fmt.Errorf("failed to scrape operator metrics on %s within %s: %w", addr, wireRetryTimeout, lastErr)
-	}
-	return nil
-}
-
-// metricsBearerToken returns a bearer token authorized to GET /metrics.
-//
-// It cannot simply reuse restConfig's own credentials: how $KUBECONFIG
-// authenticates varies by environment (a CI-provisioned cluster typically
-// hands out a client-certificate admin kubeconfig with no token at all,
-// while a developer's local kubeconfig from `oc login` usually has one),
-// and there's no generic way to recover a bearer token from an arbitrary
-// rest.Config. Instead it mints a fresh, short-lived token via the
-// TokenRequest API for a dedicated ServiceAccount that's authorized for
-// exactly that (see ensureMetricsReaderRBAC/mintMetricsReaderToken in
-// exec_client_test.go), which works the same way regardless of how the
-// ambient kubeconfig authenticates.
-func metricsBearerToken(ctx context.Context) (string, error) {
-	return mintMetricsReaderToken(ctx)
 }

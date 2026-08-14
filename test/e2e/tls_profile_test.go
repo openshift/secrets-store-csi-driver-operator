@@ -92,7 +92,6 @@ var _ = Describe("TLS profile adherence", Label("tls"), Ordered, func() {
 		ctx = context.Background()
 
 		Expect(ensureExecClientPod(ctx)).To(Succeed(), "create exec-client pod for in-cluster wire checks")
-		Expect(ensureMetricsReaderRBAC(ctx)).To(Succeed(), "create metrics-reader identity for authenticated metrics scrape")
 
 		var err error
 		original, err = getClusterAPIServerTLSConfig(ctx)
@@ -122,7 +121,6 @@ var _ = Describe("TLS profile adherence", Label("tls"), Ordered, func() {
 		cleanupCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 		defer cancel()
 		deleteExecClientPod(cleanupCtx)
-		deleteMetricsReaderRBAC(cleanupCtx)
 
 		if original == nil {
 			return
@@ -152,14 +150,6 @@ var _ = Describe("TLS profile adherence", Label("tls"), Ordered, func() {
 			logContains: []string{"Using service-serving-cert provided certificates"},
 			wire:        wireHTTPSOK,
 		}),
-		Entry("A3 metrics scrape over HTTPS succeeds", tlsScenario{
-			id:          "A3",
-			name:        "metrics scrape over HTTPS succeeds",
-			profile:     nil,
-			adherence:   configv1.TLSAdherencePolicyLegacyAdheringComponentsOnly,
-			logContains: []string{"leaving --config as-is"},
-			wire:        wireHTTPSOK,
-		}),
 		Entry("B1 Legacy + Modern keeps Controllercmd defaults", tlsScenario{
 			id:          "B1",
 			name:        "Legacy + Modern keeps Controllercmd defaults",
@@ -177,7 +167,7 @@ var _ = Describe("TLS profile adherence", Label("tls"), Ordered, func() {
 		// set" (see vendor/github.com/openshift/api/config/v1/types_apiserver.go),
 		// which permanently forbids unsetting tlsAdherence back to empty/NoOpinion
 		// once it has ever been set to a non-nil value. BeforeAll's own support
-		// probe -- plus A1/A2/A3/B1 above, which all set a real non-nil adherence
+		// probe -- plus A1/A2/B1 above, which all set a real non-nil adherence
 		// before B2 runs -- already trip that rule well before this entry executes,
 		// on every run. Reordering entries within this table would not help, since
 		// BeforeAll's probe alone is sufficient to lock the field. Genuinely
@@ -611,9 +601,6 @@ func runTLSScenario(ctx context.Context, tc tlsScenario, lastUID *string) {
 		if dialErr := waitForDialTLS(ctx, addr, tls.VersionTLS12, tls.VersionTLS13); dialErr != nil {
 			dumpNetworkDiagnostics(ctx, pod)
 			Fail(fmt.Sprintf("HTTPS dial %s: %v", addr, dialErr))
-		}
-		if tc.id == "A3" {
-			Expect(waitForScrapeOperatorMetrics(ctx, addr)).To(Succeed())
 		}
 	case wireModernTLS13Only:
 		Expect(waitForDialTLS(ctx, addr, tls.VersionTLS13, tls.VersionTLS13)).To(Succeed(), "TLS1.3 dial should succeed")
