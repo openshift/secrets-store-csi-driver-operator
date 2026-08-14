@@ -34,7 +34,6 @@
 
 - `make test-unit` — runs unit tests via `go test`.
 - `make test-e2e` — runs end-to-end tests via `hack/e2e.sh`.
-- `make test-e2e-tls` — runs TLS profile adherence e2e specs only (`-ginkgo.label-filter=tls`).
 - `make verify` — runs code verification (formatting, vetting, Go version checks).
 - `make test` — runs `test-unit` (the default test target).
 - Run `make verify` before submitting changes to catch formatting and vet issues.
@@ -46,7 +45,6 @@
 - The e2e script creates an ephemeral namespace (`secrets-store-test-ns-<random>`) and cleans it up via `test_teardown`.
 - E2E tests validate: CSIDriver resource existence, provider pod readiness, SecretProviderClass creation, and secret volume mounting.
 - E2E tests are run in CI via Prow jobs — they are not expected to run locally in most development workflows.
-- TLS profile adherence e2e (`make test-e2e-tls`) lives under `test/e2e/` as Ginkgo specs (`Label("tls")`, `Ordered` + `DescribeTable`), and requires FeatureGate `TLSAdherence` so `apiserver.spec.tlsAdherence` is served (specs Skip when unavailable). Optional destructive RBAC cases: `E2E_TLS_RBAC=1`.
 
 ## Code Verification
 
