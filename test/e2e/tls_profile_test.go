@@ -111,7 +111,7 @@ var _ = Describe("TLS profile adherence", Label("tls"), Ordered, func() {
 		Expect(err).NotTo(HaveOccurred(), "operator not ready before suite")
 		// Ensure baseline logs exist after the probe update (restart if needed).
 		if err := waitForOperatorLogContains(ctx, pod.Name, "leaving --config as-is"); err != nil {
-			restarted, rerr := waitForOperatorRestart(ctx, pod.UID)
+			restarted, rerr := waitForOperatorRestart(ctx, pod.RestartKey)
 			Expect(rerr).NotTo(HaveOccurred(), "baseline Controllercmd default log not found; operator restart failed")
 			Expect(waitForOperatorLogContains(ctx, restarted.Name, "leaving --config as-is")).To(Succeed(),
 				"baseline Controllercmd default log after restart")
@@ -272,12 +272,12 @@ var _ = Describe("TLS profile adherence", Label("tls"), Ordered, func() {
 		before, err := waitForOperatorReady(ctx)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(updateClusterAPIServerTLSConfig(ctx, tlsProfileIntermediate, configv1.TLSAdherencePolicyStrictAllComponents)).To(Succeed())
-		mid, err := waitForOperatorRestart(ctx, before.UID)
+		mid, err := waitForOperatorRestart(ctx, before.RestartKey)
 		Expect(err).NotTo(HaveOccurred(), "restart after Intermediate")
 		Expect(waitForOperatorLogContains(ctx, mid.Name, "minTLSVersion=VersionTLS12")).To(Succeed())
 
 		Expect(updateClusterAPIServerTLSConfig(ctx, tlsProfileModern, configv1.TLSAdherencePolicyStrictAllComponents)).To(Succeed())
-		after, err := waitForOperatorRestart(ctx, mid.UID)
+		after, err := waitForOperatorRestart(ctx, mid.RestartKey)
 		Expect(err).NotTo(HaveOccurred(), "restart after Modern")
 		Expect(waitForOperatorLogContains(ctx, after.Name, "minTLSVersion=VersionTLS13")).To(Succeed())
 		lastUID = after.UID
@@ -287,16 +287,16 @@ var _ = Describe("TLS profile adherence", Label("tls"), Ordered, func() {
 		before, err := waitForOperatorReady(ctx)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(updateClusterAPIServerTLSConfig(ctx, tlsProfileModern, configv1.TLSAdherencePolicyLegacyAdheringComponentsOnly)).To(Succeed())
-		legacyPod, err := waitForOperatorRestart(ctx, before.UID)
+		legacyPod, err := waitForOperatorRestart(ctx, before.RestartKey)
 		if err != nil {
 			legacyPod, err = waitForOperatorReady(ctx)
 			Expect(err).NotTo(HaveOccurred())
-			GinkgoWriter.Printf("D2: no restart after Legacy update (uid=%s); continuing\n", legacyPod.UID)
+			GinkgoWriter.Printf("D2: no restart after Legacy update (restartKey=%s); continuing\n", legacyPod.RestartKey)
 		}
 		Expect(waitForOperatorLogContains(ctx, legacyPod.Name, "leaving --config as-is")).To(Succeed())
 
 		Expect(updateClusterAPIServerTLSConfig(ctx, tlsProfileIntermediate, configv1.TLSAdherencePolicyStrictAllComponents)).To(Succeed())
-		strictPod, err := waitForOperatorRestart(ctx, legacyPod.UID)
+		strictPod, err := waitForOperatorRestart(ctx, legacyPod.RestartKey)
 		Expect(err).NotTo(HaveOccurred(), "restart Legacy→Strict")
 		Expect(waitForOperatorLogContains(ctx, strictPod.Name, "Applied cluster TLS profile", "minTLSVersion=VersionTLS12")).To(Succeed())
 		lastUID = strictPod.UID
@@ -306,16 +306,16 @@ var _ = Describe("TLS profile adherence", Label("tls"), Ordered, func() {
 		before, err := waitForOperatorReady(ctx)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(updateClusterAPIServerTLSConfig(ctx, tlsProfileIntermediate, configv1.TLSAdherencePolicyStrictAllComponents)).To(Succeed())
-		strictPod, err := waitForOperatorRestart(ctx, before.UID)
+		strictPod, err := waitForOperatorRestart(ctx, before.RestartKey)
 		if err != nil {
 			strictPod, err = waitForOperatorReady(ctx)
 			Expect(err).NotTo(HaveOccurred())
-			GinkgoWriter.Printf("D3: no restart after Strict update (uid=%s); continuing\n", strictPod.UID)
+			GinkgoWriter.Printf("D3: no restart after Strict update (restartKey=%s); continuing\n", strictPod.RestartKey)
 		}
 		Expect(waitForOperatorLogContains(ctx, strictPod.Name, "Applied cluster TLS profile")).To(Succeed())
 
 		Expect(updateClusterAPIServerTLSConfig(ctx, tlsProfileIntermediate, configv1.TLSAdherencePolicyLegacyAdheringComponentsOnly)).To(Succeed())
-		legacyPod, err := waitForOperatorRestart(ctx, strictPod.UID)
+		legacyPod, err := waitForOperatorRestart(ctx, strictPod.RestartKey)
 		Expect(err).NotTo(HaveOccurred(), "restart Strict→Legacy")
 		Expect(waitForOperatorLogContains(ctx, legacyPod.Name, "leaving --config as-is")).To(Succeed())
 		lastUID = legacyPod.UID
@@ -335,7 +335,7 @@ var _ = Describe("TLS profile adherence", Label("tls"), Ordered, func() {
 		DeferCleanup(func() {
 			_ = patchAPIServerAuditProfile(context.Background(), originalAudit)
 		})
-		assertOperatorUIDStable(ctx, before.UID)
+		assertOperatorRestartKeyStable(ctx, before.RestartKey)
 		lastUID = before.UID
 	})
 
@@ -347,7 +347,7 @@ var _ = Describe("TLS profile adherence", Label("tls"), Ordered, func() {
 			Skip(fmt.Sprintf("serving cert secret %s not found", servingCertSecretName))
 		}
 		Expect(err).NotTo(HaveOccurred())
-		after, err := waitForOperatorRestart(ctx, before.UID)
+		after, err := waitForOperatorRestart(ctx, before.RestartKey)
 		Expect(err).NotTo(HaveOccurred(), "operator did not restart after serving-cert delete")
 		Expect(waitForOperatorLogContains(ctx, after.Name, "Using service-serving-cert provided certificates")).To(Succeed())
 		lastUID = after.UID
@@ -564,11 +564,11 @@ func runTLSScenario(ctx context.Context, tc tlsScenario, lastUID *string) {
 
 	var pod *operatorPod
 	if tc.expectRestart {
-		pod, err = waitForOperatorRestart(ctx, before.UID)
+		pod, err = waitForOperatorRestart(ctx, before.RestartKey)
 		if err != nil {
 			pod, err = waitForOperatorReady(ctx)
 			Expect(err).NotTo(HaveOccurred())
-			GinkgoWriter.Printf("warning: expected restart for %s but uid unchanged (%s); asserting logs on current pod\n", tc.id, pod.UID)
+			GinkgoWriter.Printf("warning: expected restart for %s but restartKey unchanged (%s); asserting logs on current pod\n", tc.id, pod.RestartKey)
 		}
 	} else {
 		time.Sleep(2 * time.Second)
