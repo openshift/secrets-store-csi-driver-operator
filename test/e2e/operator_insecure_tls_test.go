@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
-	"os"
 	"strconv"
 	"strings"
 
@@ -82,7 +81,7 @@ func waitForDialTLS(ctx context.Context, addr string, minVersion, maxVersion uin
 }
 
 func scrapeOperatorMetrics(ctx context.Context, addr string) error {
-	token, err := metricsBearerToken()
+	token, err := metricsBearerToken(ctx)
 	if err != nil {
 		return err
 	}
@@ -120,25 +119,18 @@ func waitForScrapeOperatorMetrics(ctx context.Context, addr string) error {
 	return nil
 }
 
-// metricsBearerToken returns the bearer token from the e2e restConfig used for
-// API access (BearerToken, or BearerTokenFile for in-cluster).
-func metricsBearerToken() (string, error) {
-	if restConfig == nil {
-		return "", fmt.Errorf("rest config not initialized")
-	}
-	if token := restConfig.BearerToken; token != "" {
-		return token, nil
-	}
-	if restConfig.BearerTokenFile == "" {
-		return "", fmt.Errorf("no bearer token available for metrics scrape")
-	}
-	b, err := os.ReadFile(restConfig.BearerTokenFile)
-	if err != nil {
-		return "", fmt.Errorf("read bearer token for metrics scrape: %w", err)
-	}
-	token := strings.TrimSpace(string(b))
-	if token == "" {
-		return "", fmt.Errorf("empty bearer token file %q", restConfig.BearerTokenFile)
-	}
-	return token, nil
+// metricsBearerToken returns a bearer token authorized to GET /metrics.
+//
+// It cannot simply reuse restConfig's own credentials: how $KUBECONFIG
+// authenticates varies by environment (a CI-provisioned cluster typically
+// hands out a client-certificate admin kubeconfig with no token at all,
+// while a developer's local kubeconfig from `oc login` usually has one),
+// and there's no generic way to recover a bearer token from an arbitrary
+// rest.Config. Instead it mints a fresh, short-lived token via the
+// TokenRequest API for a dedicated ServiceAccount that's authorized for
+// exactly that (see ensureMetricsReaderRBAC/mintMetricsReaderToken in
+// exec_client_test.go), which works the same way regardless of how the
+// ambient kubeconfig authenticates.
+func metricsBearerToken(ctx context.Context) (string, error) {
+	return mintMetricsReaderToken(ctx)
 }

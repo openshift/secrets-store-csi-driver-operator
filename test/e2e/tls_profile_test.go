@@ -92,6 +92,7 @@ var _ = Describe("TLS profile adherence", Label("tls"), Ordered, func() {
 		ctx = context.Background()
 
 		Expect(ensureExecClientPod(ctx)).To(Succeed(), "create exec-client pod for in-cluster wire checks")
+		Expect(ensureMetricsReaderRBAC(ctx)).To(Succeed(), "create metrics-reader identity for authenticated metrics scrape")
 
 		var err error
 		original, err = getClusterAPIServerTLSConfig(ctx)
@@ -121,6 +122,7 @@ var _ = Describe("TLS profile adherence", Label("tls"), Ordered, func() {
 		cleanupCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 		defer cancel()
 		deleteExecClientPod(cleanupCtx)
+		deleteMetricsReaderRBAC(cleanupCtx)
 
 		if original == nil {
 			return
