@@ -65,6 +65,16 @@ func isTLSAdherenceUnsupported(err error) bool {
 		return false
 	}
 	msg := strings.ToLower(err.Error())
+	// A value the API validated and rejected as an unrecognized enum member
+	// (e.g. B6's deliberately-bogus "FutureMode") proves tlsAdherence IS
+	// served and enforced on this cluster -- the opposite of "unsupported".
+	// Carve this out before the broader heuristics below, which exist to
+	// detect the field/feature not being served at all (missing
+	// FeatureGate, RBAC, managed-cluster admission denial), so a correctly
+	// rejected bogus value isn't mistaken for that and swallowed by a Skip.
+	if strings.Contains(msg, "unsupported value") && strings.Contains(msg, "supported values") {
+		return false
+	}
 	// Field not served / validation / RBAC / managed-cluster admission denials.
 	if strings.Contains(msg, "tlsadherence") || strings.Contains(msg, "unknown field") {
 		return true

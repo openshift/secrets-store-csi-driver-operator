@@ -33,9 +33,9 @@ const (
 	operatorRestartTimeout = 7 * time.Minute
 	wireDialTimeout        = 15 * time.Second
 	// wireRetryTimeout bounds retries of raw TCP/TLS wire checks (dialTLS,
-	// assertPlaintextHTTP, scrapeOperatorMetrics) against a just-installed or
-	// just-restarted pod, tolerating transient NetworkPolicy/OVN ACL
-	// convergence rather than failing on a single dial attempt.
+	// assertPlaintextHTTP) against a just-installed or just-restarted pod,
+	// tolerating transient NetworkPolicy/OVN ACL convergence rather than
+	// failing on a single dial attempt.
 	//
 	// The "TLS profile adherence" suite (tls_profile_test.go) only runs
 	// under the TLSAdherence feature gate, which today only the
@@ -197,7 +197,7 @@ func assertOperatorRestartKeyStable(ctx context.Context, restartKey string) {
 // dumpNetworkDiagnostics logs the NetworkPolicies in effect in
 // operatorNamespace, pod's node placement, its recent events, and the
 // operator container's own logs. Call this right before failing a wire check
-// (dialTLS/scrapeOperatorMetrics/assertPlaintextHTTP) that exhausted its
+// (dialTLS/assertPlaintextHTTP) that exhausted its
 // retry budget, so the resulting artifacts can distinguish a slow-converging
 // ACL (would eventually pass with a longer budget, and diagnostics here look
 // unremarkable) from a hard block (diagnostics will show a NetworkPolicy
