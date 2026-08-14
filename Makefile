@@ -101,3 +101,20 @@ docker-push-coverage: ## Push coverage Docker image.
 .PHONY: e2e-coverage-collect
 e2e-coverage-collect: ## Collect e2e coverage data and optionally upload to Codecov.
 	ARTIFACT_DIR=$${ARTIFACT_DIR:-.} hack/e2e-coverage.sh collect
+
+# Run TLS profile adherence e2e specs only (SSCSI-264 / Controllercmd :8443).
+# Requires a running OpenShift cluster with the operator installed and
+# FeatureGate TLSAdherence (or equivalent) so apiserver.spec.tlsAdherence is served.
+# Specs Skip when tlsAdherence is unavailable. Optional destructive RBAC:
+#   E2E_TLS_RBAC=1 make test-e2e-tls
+#
+# Example:
+#   make test-e2e-tls
+test-e2e-tls:
+	go test ./test/e2e -v -timeout 60m -count=1 -args \
+		-ginkgo.v \
+		-ginkgo.label-filter=tls \
+		-ginkgo.poll-progress-after=30s \
+		-ginkgo.poll-progress-interval=30s
+
+.PHONY: test-e2e-tls
