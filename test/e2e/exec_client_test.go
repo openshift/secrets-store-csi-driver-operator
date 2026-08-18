@@ -34,12 +34,22 @@ import (
 const (
 	execClientPodName       = "sscsi-e2e-tls-client"
 	execClientContainerName = "client"
-	// execClientImageEnv optionally overrides execClientDefaultImage, in
-	// case that image isn't pullable in a given environment.
+	// execClientImageEnv optionally overrides execClientDefaultImage, e.g.
+	// on a disconnected/restricted-network cluster where this default
+	// (a public registry.access.redhat.com pull) isn't reachable.
+	//
+	// The operand images already running in-cluster (DaemonSet in
+	// assets/node.yaml: csi-driver, csi-node-driver-registrar,
+	// csi-liveness-probe) were considered as an in-cluster-resolvable
+	// alternative, but all three are minimal single-purpose sidecar images
+	// with no shell or curl, so they can't run the wire checks below --
+	// hence the explicit override rather than sourcing this from the
+	// DaemonSet.
 	execClientImageEnv = "E2E_TLS_CLIENT_IMAGE"
 	// execClientDefaultImage needs a curl new enough to support
-	// --tlsv1.x/--tls-max (curl >=7.54); ubi9-minimal's is.
-	execClientDefaultImage = "registry.access.redhat.com/ubi9/ubi-minimal:latest"
+	// --tlsv1.x/--tls-max (curl >=7.54); ubi9-minimal's is. Pinned by
+	// digest (rather than :latest) for reproducibility.
+	execClientDefaultImage = "registry.access.redhat.com/ubi9/ubi-minimal@sha256:8eb2830d0936237fc13a1f2f7e45aecf90d69043380ad167fad0343632937f41"
 	execPodReadyTimeout    = 3 * time.Minute
 )
 
@@ -53,16 +63,27 @@ func execClientImage() string {
 // ensureExecClientPod creates the exec-client pod if it doesn't already
 // exist and waits for it to be Ready. Safe to call multiple times (e.g.
 // from a BeforeAll that may run more than once across retried suites).
+//
+// An existing pod found in any phase other than Running is deleted and
+// recreated rather than waited on: with RestartPolicyNever, a pod that has
+// gone Succeeded/Failed/Unknown will never come back on its own, and
+// waiting on its Ready condition would just spin until execPodReadyTimeout
+// on every remaining call for the rest of the suite.
 func ensureExecClientPod(ctx context.Context) error {
-	_, err := kubeClient.CoreV1().Pods(operatorNamespace).Get(ctx, execClientPodName, metav1.GetOptions{})
-	if err == nil {
-		return waitForExecClientPodReady(ctx)
-	}
-	if !apierrors.IsNotFound(err) {
+	pod, err := kubeClient.CoreV1().Pods(operatorNamespace).Get(ctx, execClientPodName, metav1.GetOptions{})
+	switch {
+	case err == nil:
+		if pod.Status.Phase == corev1.PodRunning {
+			return waitForExecClientPodReady(ctx)
+		}
+		if err := kubeClient.CoreV1().Pods(operatorNamespace).Delete(ctx, execClientPodName, metav1.DeleteOptions{}); err != nil && !apierrors.IsNotFound(err) {
+			return fmt.Errorf("failed to delete non-Running exec-client pod %s/%s (phase=%s): %w", operatorNamespace, execClientPodName, pod.Status.Phase, err)
+		}
+	case !apierrors.IsNotFound(err):
 		return fmt.Errorf("failed to check for existing exec-client pod %s/%s: %w", operatorNamespace, execClientPodName, err)
 	}
 
-	pod := &corev1.Pod{
+	newPod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      execClientPodName,
 			Namespace: operatorNamespace,
@@ -71,13 +92,19 @@ func ensureExecClientPod(ctx context.Context) error {
 		Spec: corev1.PodSpec{
 			RestartPolicy: corev1.RestartPolicyNever,
 			Containers: []corev1.Container{{
-				Name:    execClientContainerName,
-				Image:   execClientImage(),
-				Command: []string{"sleep", "3600"},
+				Name:  execClientContainerName,
+				Image: execClientImage(),
+				// "infinity" (GNU coreutils, present on ubi-minimal) rather
+				// than a fixed duration: this pod must outlive the whole
+				// suite, which can run well past an hour once kubelet's
+				// per-container restart backoff (see operatorRestartTimeout)
+				// stacks up across the scenario matrix's many operator
+				// restarts. deleteExecClientPod (AfterAll) tears it down.
+				Command: []string{"sleep", "infinity"},
 			}},
 		},
 	}
-	if _, err := kubeClient.CoreV1().Pods(operatorNamespace).Create(ctx, pod, metav1.CreateOptions{}); err != nil {
+	if _, err := kubeClient.CoreV1().Pods(operatorNamespace).Create(ctx, newPod, metav1.CreateOptions{}); err != nil {
 		return fmt.Errorf("failed to create exec-client pod %s/%s: %w", operatorNamespace, execClientPodName, err)
 	}
 	return waitForExecClientPodReady(ctx)
