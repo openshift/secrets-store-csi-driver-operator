@@ -1,0 +1,168 @@
+stage: code-generation
+artifact: fork working copy (code + tests)
+version: 1
+eval_count: 9
+oape_commands:
+  - api-generate
+  - api-generate-tests
+  - api-implement
+  - e2e-generate
+  - manual
+  - any
+evals:
+  - id: eval-r001-codegen-001
+    round: 1
+    oape_command: api-implement
+    title: Backward-compatibility changes include exact-value regression tests
+    source_issue_ids: [RCA-1]
+    prompt: >
+      For code implementing a "no behavior change for non-opted-in/default-path resources"
+      requirement, does the co-generated test assert exact output/serialization equality against a
+      documented pre-feature baseline value — not only that the effective/decoded behavior is
+      equivalent?
+    assertions:
+      - type: must_include_tests
+        value: "Exact-value (string/byte-for-byte or field-by-field) comparison against a documented baseline"
+      - type: must_co_generate_tests
+        value: true
+    scoring:
+      pass_threshold: 80
+
+  - id: eval-r001-codegen-002
+    round: 1
+    oape_command: api-implement
+    title: CR-specific config in framework callbacks obtained via lister, not signature widening
+    source_issue_ids: [RCA-8]
+    prompt: >
+      When new hook/callback code needs configuration from a custom resource that the framework's
+      callback signature does not carry directly, is the configuration obtained by closing over a
+      lister/informer cache rather than by modifying the shared framework interface's signature?
+    assertions:
+      - type: must_use_pattern
+        value: "Lister/informer close-over for CR-specific config in a framework callback with a fixed signature"
+      - type: must_not_use
+        value: "Modifying a shared framework callback/interface signature to carry feature-specific config"
+    scoring:
+      pass_threshold: 75
+
+  - id: eval-r001-codegen-003
+    round: 1
+    oape_command: api-implement
+    title: Shared static-resource controller extended via separate registration, not branched AssetFunc
+    source_issue_ids: [RCA-8]
+    prompt: >
+      When adding dynamic per-resource behavior to a resource managed by a shared static-resource
+      controller call (one AssetFunc applied uniformly to multiple files), is the new behavior
+      implemented via a separate, dedicated controller registration for that resource rather than by
+      branching the shared AssetFunc on resource identity?
+    assertions:
+      - type: must_use_pattern
+        value: "Dedicated controller registration for a single resource needing new dynamic behavior"
+      - type: must_not_use
+        value: "Branching a shared AssetFunc by resource identity/filename to special-case one resource"
+      - type: must_match_task_payload
+        value: true
+    scoring:
+      pass_threshold: 70
+
+  - id: eval-r001-codegen-004
+    round: 1
+    oape_command: e2e-generate
+    title: One-way/immutable field transitions include dedicated pre-cleanup step
+    source_issue_ids: [RCA-6]
+    prompt: >
+      For an E2E test exercising a field with a one-way/irreversible transition, does the test include
+      a dedicated cleanup step that performs the required one-way transition BEFORE the standard
+      "restore prior config" cleanup, rather than relying on the standard restore alone?
+    assertions:
+      - type: must_use_pattern
+        value: "Dedicated pre-restore cleanup step for one-way/immutable field transitions"
+      - type: must_include_tests
+        value: "Cleanup verified to reach a spec-compliant clean state after a one-way transition"
+    scoring:
+      pass_threshold: 75
+
+  - id: eval-r001-codegen-005
+    round: 1
+    oape_command: e2e-generate
+    title: E2E scope matches actual test-fixture capabilities
+    source_issue_ids: [RCA-5]
+    prompt: >
+      Does the generated E2E test assert only against behavior the shared test fixture/harness can
+      actually simulate or influence (per repo-assessment's documented capability limits), rather than
+      asserting against runtime behavior the fixture has no mechanism to control?
+    assertions:
+      - type: must_not_violate_non_goals
+        value: "Assertions exceeding the documented test-fixture's simulation capability"
+      - type: must_match_task_payload
+        value: true
+    scoring:
+      pass_threshold: 70
+
+  - id: eval-r001-codegen-006
+    round: 1
+    oape_command: manual
+    title: Removing an unnecessary permission grant updates CSV and docs in the same change
+    source_issue_ids: [RCA-2]
+    prompt: >
+      When a change removes an RBAC permission grant identified as no longer necessary, does it also
+      update the matching CSV/ClusterServiceVersion clusterPermissions entry and any documentation that
+      described that permission's purpose, so the removal is consistent across all three artifacts?
+    assertions:
+      - type: files_must_exist
+        value: "Matching CSV/ClusterServiceVersion permissions update alongside the RBAC manifest change"
+      - type: must_use_pattern
+        value: "Docs describing the removed permission's purpose are updated to match"
+    scoring:
+      pass_threshold: 75
+
+  - id: eval-r001-codegen-007
+    round: 1
+    oape_command: manual
+    title: Dependency-bump changes pass module verification make targets
+    source_issue_ids: [RCA-3]
+    prompt: >
+      For a change that bumps a vendored dependency (go.mod/go.sum/vendor), were the relevant module
+      verification make targets actually executed and confirmed passing (not just `go build`), and if
+      a sibling co-versioned library required bumping too, is that captured in the same change?
+    assertions:
+      - type: must_pass_make_targets
+        value: true
+      - type: must_execute_verification
+        value: "make verify after any dependency bump (validates vendor/ matches go.mod), plus go build ./..., checked for sibling version-skew failures"
+    scoring:
+      pass_threshold: 80
+
+  - id: eval-r001-codegen-008
+    round: 1
+    oape_command: any
+    title: Tier 1 tasks co-generate test files following the AGENTS.md exemplar pattern
+    source_issue_ids: [RCA-4]
+    prompt: >
+      For any Tier 1 task (controller logic, webhook/validation code, or manual Go helper with
+      exported logic), was a matching _test.go file co-generated in the same package, following the
+      test exemplar pattern defined in AGENTS.md, with both positive and error-path cases?
+    assertions:
+      - type: must_co_generate_tests
+        value: true
+      - type: must_follow_effective_go
+        value: true
+    scoring:
+      pass_threshold: 80
+
+  - id: eval-r001-codegen-009
+    round: 1
+    oape_command: any
+    title: Generated code does not violate task-stated non-goals
+    source_issue_ids: [RCA-2, RCA-8]
+    prompt: >
+      Does the generated/modified code respect the "Non-goals / forbidden edits" stated in the task's
+      §4 payload (e.g., not touching unrelated shared code paths, not modifying files outside the
+      task's declared target files) even when a tempting shortcut would touch them?
+    assertions:
+      - type: must_not_violate_non_goals
+        value: true
+      - type: must_follow_constitution
+        value: true
+    scoring:
+      pass_threshold: 80

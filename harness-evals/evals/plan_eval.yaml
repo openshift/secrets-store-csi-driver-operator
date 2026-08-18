@@ -1,0 +1,121 @@
+stage: plan
+template: templates/plan-template.md
+evals:
+  - id: eval-r001-plan-001
+    round: 1
+    stage: plan
+    title: Carried-forward UNVERIFIED items accounted for in Risks or Open Questions
+    source_issue_ids: [RCA-2]
+    input_refs:
+      - eval-generation/eval-generation-workflow/template-gaps/plan-gaps.md#GAP-PL-1
+    prompt: >
+      Evaluate whether every repo-assessment §11.1 item marked VERIFY_DURING_IMPLEMENTATION appears in
+      the plan's §7 Risks (with a stated mitigation) or §8 Open Questions (with an owner) — and that
+      the plan states this accounting is complete rather than just including a generic risk list.
+    assertions:
+      - type: must_cover_phase
+        value: "7"
+      - type: must_identify_pattern
+        value: >
+          Every carried-forward repo-assessment UNVERIFIED (VERIFY_DURING_IMPLEMENTATION) item maps to
+          a §7 risk with mitigation or a §8 open question with an owner; the plan states the
+          accounting is complete.
+    scoring:
+      pass_threshold: 80
+      weight: 1.0
+
+  - id: eval-r001-plan-002
+    round: 1
+    stage: plan
+    title: One-way/irreversible field transitions flagged with verification implications
+    source_issue_ids: [RCA-6]
+    input_refs:
+      - eval-generation/eval-generation-workflow/template-gaps/plan-gaps.md#GAP-PL-2
+    prompt: >
+      Evaluate §3.1 Kubernetes APIs (CRDs/CRs) for a feature introducing a field whose transition is
+      one-way/irreversible once set. Is this flagged explicitly, and does §6 Verification matrix state
+      a non-standard cleanup/teardown approach for it rather than assuming a generic "restore previous
+      config" strategy works?
+    assertions:
+      - type: must_cover_phase
+        value: "3.1"
+      - type: must_identify_pattern
+        value: >
+          Any one-way/irreversible field transition is flagged in §3.1, and §6 states a distinct
+          cleanup/teardown approach for verifying it (not a generic restore-to-prior-value assumption).
+    scoring:
+      pass_threshold: 75
+      weight: 0.9
+
+  - id: eval-r001-plan-003
+    round: 1
+    stage: plan
+    title: Verification matrix rows cite repo-assessment test-infrastructure capability findings
+    source_issue_ids: [RCA-5]
+    input_refs:
+      - eval-generation/eval-generation-workflow/template-gaps/plan-gaps.md#GAP-PL-3
+    prompt: >
+      Evaluate §6 Verification matrix rows that depend on a specific test-infrastructure capability
+      (e.g., simulating external-system misbehavior, upgrade-path testing). Does each such row cite
+      the repo-assessment §8.4 capability finding it relies on, or mark itself UNVERIFIED with a
+      discovery step, rather than assuming the capability exists because a test suite exists?
+    assertions:
+      - type: must_cover_phase
+        value: "6"
+      - type: must_identify_pattern
+        value: >
+          Verification matrix rows dependent on specific test-infrastructure capabilities cite the
+          repo-assessment finding that confirms the capability exists, or are marked UNVERIFIED with
+          a discovery step.
+    scoring:
+      pass_threshold: 75
+      weight: 0.9
+
+  - id: eval-r001-plan-004
+    round: 1
+    stage: plan
+    title: Dedicated backward-compatibility regression row for "no behavior change" FRs
+    source_issue_ids: [RCA-1]
+    input_refs:
+      - eval-generation/eval-generation-workflow/template-gaps/plan-gaps.md#GAP-PL-4
+    prompt: >
+      Evaluate whether, when the spec contains an FR/SC stating that behavior for default/non-opted-in
+      resources MUST NOT change, §6 Verification matrix includes a DEDICATED row requiring an
+      exact-value (byte-for-byte or field-by-field) regression comparison against a documented
+      pre-feature baseline — distinct from ordinary functional Unit test rows.
+    assertions:
+      - type: must_reference_spec_ids
+        value: "FR"
+      - type: must_cover_phase
+        value: "6"
+      - type: must_identify_pattern
+        value: >
+          A dedicated exact-value regression verification row exists for any FR/SC requiring no
+          behavior change for non-opted-in/default-path resources, separate from generic unit test
+          rows.
+    scoring:
+      pass_threshold: 80
+      weight: 1.0
+
+  - id: eval-r001-plan-005
+    round: 1
+    stage: plan
+    title: Shared-code-path blast-radius decision stated explicitly
+    source_issue_ids: [RCA-8]
+    input_refs:
+      - eval-generation/eval-generation-workflow/template-gaps/plan-gaps.md#GAP-PL-5
+    prompt: >
+      Evaluate §3.2 Controller/runtime interfaces for a phase that extends behavior in a function or
+      controller shared across multiple unrelated resources/components. Does the plan explicitly state
+      whether the new behavior is split into a dedicated call/function or branched within the shared
+      one, with rationale tied to blast-radius risk to the other consumers?
+    assertions:
+      - type: must_cover_phase
+        value: "3.2"
+      - type: must_identify_pattern
+        value: >
+          When a shared function/controller is extended, the plan states an explicit split-vs-branch
+          decision with blast-radius rationale, rather than leaving the choice implicit.
+    scoring:
+      pass_threshold: 70
+      weight: 0.8
