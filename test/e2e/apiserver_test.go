@@ -82,8 +82,14 @@ func isTLSAdherenceUnsupported(err error) bool {
 	if strings.Contains(msg, "prevented from accessing red hat managed resources") {
 		return true
 	}
+	// Only a message that still names tlsAdherence (e.g. a differently-worded
+	// "field not served" error) or a managed-cluster admission denial counts
+	// as "unsupported" here. A bare "tls" substring is too broad: genuine
+	// tlsSecurityProfile validation errors (e.g. a rejected nil Custom field)
+	// also contain "tls" and must propagate to the scenario assertions
+	// instead of being swallowed by a Skip.
 	if apierrors.IsInvalid(err) || apierrors.IsForbidden(err) || apierrors.IsNotFound(err) {
-		return strings.Contains(msg, "tls") || strings.Contains(msg, "managed")
+		return strings.Contains(msg, "tlsadherence") || strings.Contains(msg, "managed")
 	}
 	return false
 }
