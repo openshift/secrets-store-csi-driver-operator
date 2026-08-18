@@ -554,12 +554,16 @@ func runTLSScenario(ctx context.Context, tc tlsScenario, lastUID *string) {
 
 	var pod *operatorPod
 	if tc.expectRestart {
+		// A timeout here must fail the scenario rather than fall back to
+		// the current (never-restarted) pod: the restart itself is the
+		// behavior under test, and the subsequent logContains check scans
+		// the container's full accumulated log (see operatorLogs), so a
+		// substring left over from an earlier scenario's restart (several
+		// entries share substrings like "minTLSVersion=VersionTLS12")
+		// could otherwise make a missed restart pass silently. No
+		// scenario ID currently has a documented exception to this.
 		pod, err = waitForOperatorRestart(ctx, before.RestartKey)
-		if err != nil {
-			pod, err = waitForOperatorReady(ctx)
-			Expect(err).NotTo(HaveOccurred())
-			GinkgoWriter.Printf("warning: expected restart for %s but restartKey unchanged (%s); asserting logs on current pod\n", tc.id, pod.RestartKey)
-		}
+		Expect(err).NotTo(HaveOccurred(), "%s: expected operator restart", tc.id)
 	} else {
 		time.Sleep(2 * time.Second)
 		pod, err = waitForOperatorReady(ctx)
