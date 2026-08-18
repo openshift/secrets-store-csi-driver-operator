@@ -28,9 +28,13 @@ const (
 	// throttling how soon the container comes back up. In a suite that
 	// flips the TLS profile/adherence repeatedly within a few minutes (the
 	// scenario matrix below, plus D1-D5), later restarts reliably ride the
-	// full 300s cap. operatorTimeout (5m) races that cap almost exactly, so
-	// restart-waits get their own budget with headroom above it.
-	operatorRestartTimeout = 7 * time.Minute
+	// full 300s cap. A timeout here now fails the scenario outright (no
+	// silent fallback -- see runTLSScenario), so this needs real headroom
+	// above that 300s floor, not just enough to barely clear it: the
+	// operator's own watch/reconcile latency plus container init/Ready on
+	// a loaded or compact/FIPS-style CI node still has to fit in what's
+	// left after the mandatory backoff wait.
+	operatorRestartTimeout = 10 * time.Minute
 	wireDialTimeout        = 15 * time.Second
 	// wireRetryTimeout bounds retries of raw TCP/TLS wire checks (dialTLS,
 	// assertPlaintextHTTP) against a just-installed or just-restarted pod,
