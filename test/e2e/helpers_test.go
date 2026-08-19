@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"sort"
 	"strings"
 	"time"
@@ -12,6 +13,7 @@ import (
 	. "github.com/onsi/gomega"
 
 	opv1 "github.com/openshift/api/operator/v1"
+	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -277,4 +279,50 @@ func argValue(args []string, prefix string) string {
 		}
 	}
 	return ""
+}
+
+// waitForOperatorLogsWithoutSubstring polls the operator deployment pod logs
+// until they do not contain substr. Used to catch RBAC gaps for APIServer
+// informer list/watch (OCPBUGS-24312).
+func waitForOperatorLogsWithoutSubstring(substr string) {
+	By(fmt.Sprintf("waiting for operator logs to not contain %q", substr))
+	attempt := 0
+	Eventually(func() (string, error) {
+		attempt++
+		ctx, cancel := withAPITimeout()
+		defer cancel()
+
+		pods, err := kubeClient.CoreV1().Pods(operatorNamespace).List(ctx, metav1.ListOptions{
+			LabelSelector: operatorAppLabel,
+		})
+		if err != nil {
+			GinkgoWriter.Printf("[waitForOperatorLogsWithoutSubstring attempt %d] list pods failed: %v\n", attempt, err)
+			return "", err
+		}
+
+		for _, pod := range pods.Items {
+			if pod.Status.Phase != corev1.PodRunning {
+				continue
+			}
+			req := kubeClient.CoreV1().Pods(operatorNamespace).GetLogs(pod.Name, &corev1.PodLogOptions{
+				Container: operatorDeploymentName,
+			})
+			stream, err := req.Stream(ctx)
+			if err != nil {
+				GinkgoWriter.Printf("[waitForOperatorLogsWithoutSubstring attempt %d] log stream failed for pod %s: %v\n", attempt, pod.Name, err)
+				return "", err
+			}
+			logs, err := io.ReadAll(stream)
+			_ = stream.Close()
+			if err != nil {
+				return "", err
+			}
+			body := string(logs)
+			GinkgoWriter.Printf("[waitForOperatorLogsWithoutSubstring attempt %d] pod=%s log_bytes=%d contains_forbidden=%t\n",
+				attempt, pod.Name, len(body), strings.Contains(body, substr))
+			return body, nil
+		}
+		return "", fmt.Errorf("no running operator pod with label %q in namespace %q", operatorAppLabel, operatorNamespace)
+	}, pollTimeout, pollInterval).ShouldNot(ContainSubstring(substr),
+		"operator logs in %s/%s must not contain %q", operatorNamespace, operatorDeploymentName, substr)
 }
