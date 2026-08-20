@@ -199,16 +199,10 @@ check_freshness() {
     head_sha=$(git rev-parse HEAD)
     echo "Current HEAD: ${head_sha}"
 
-    local token_args=()
-    if [[ -f "${CODECOV_SECRET_PATH}" ]]; then
-        token_args=(-H "Authorization: Bearer $(cat "${CODECOV_SECRET_PATH}")")
-    elif [[ -n "${CODECOV_TOKEN:-}" ]]; then
-        token_args=(-H "Authorization: Bearer ${CODECOV_TOKEN}")
-    fi
+    local api_url="https://api.codecov.io/api/v2/github/openshift/repos/secrets-store-csi-driver-operator/commits?branch=main&page_size=1"
 
     local response http_code body
-    response=$(curl -sS -w "\n%{http_code}" "${token_args[@]}" \
-        "https://api.codecov.io/api/v2/github/openshift/repos/secrets-store-csi-driver-operator/commits?branch=main&page_size=1") || {
+    response=$(curl -sS -w "\n%{http_code}" "${api_url}") || {
         echo "Error: Codecov API request failed (network/DNS error). Aborting."
         exit 1
     }
