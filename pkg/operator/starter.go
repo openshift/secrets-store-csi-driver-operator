@@ -49,6 +49,14 @@ func RunOperator(ctx context.Context, controllerConfig *controllercmd.Controller
 	configClient := configclient.NewForConfigOrDie(rest.AddUserAgent(controllerConfig.KubeConfig, operatorName))
 	configInformers := configinformers.NewSharedInformerFactory(configClient, resync)
 
+	// Second, independent registration on the shared APIServers informer (alongside, not
+	// replacing, WithCSIConfigObserverController's own registration below): re-renders this
+	// operator's own TLS serving config file whenever the cluster's centrally-managed
+	// TLSSecurityProfile changes, so the operator's HTTPS server (not just the CSI driver
+	// operand observed via WithCSIConfigObserverController) honors it. See plan.md §3.2.
+	apiServerInformer := configInformers.Config().V1().APIServers()
+	RegisterTLSServingConfigObserver(apiServerInformer.Informer(), apiServerInformer.Lister(), TLSServingConfigFilePath)
+
 	// Create GenericOperatorclient. This is used by the library-go controllers created down below
 	gvr := opv1.SchemeGroupVersion.WithResource("clustercsidrivers")
 	gvk := opv1.SchemeGroupVersion.WithKind("ClusterCSIDriver")
