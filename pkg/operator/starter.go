@@ -44,6 +44,7 @@ func RunOperator(ctx context.Context, controllerConfig *controllercmd.Controller
 	kubeClient := kubeclient.NewForConfigOrDie(rest.AddUserAgent(controllerConfig.KubeConfig, operatorName))
 	kubeInformersForNamespaces := v1helpers.NewKubeInformersForNamespaces(kubeClient, operatorNamespace, "")
 	configMapInformer := kubeInformersForNamespaces.InformersFor(operatorNamespace).Core().V1().ConfigMaps()
+	secretInformer := kubeInformersForNamespaces.InformersFor(operatorNamespace).Core().V1().Secrets()
 
 	// Create config clientset and informer. This is used to get the cluster ID
 	configClient := configclient.NewForConfigOrDie(rest.AddUserAgent(controllerConfig.KubeConfig, operatorName))
@@ -100,6 +101,7 @@ func RunOperator(ctx context.Context, controllerConfig *controllercmd.Controller
 			"node_sa.yaml",
 			"csidriver.yaml",
 			"cabundle_cm.yaml",
+			"node_metrics_service.yaml",
 			"rbac/privileged_role.yaml",
 			"rbac/node_privileged_binding.yaml",
 			"rbac/secretproviderclasses_role.yaml",
@@ -130,6 +132,10 @@ func RunOperator(ctx context.Context, controllerConfig *controllercmd.Controller
 		withSecretRotationDaemonSetHook(
 			clusterCSIDriverLister,
 			providerName,
+		),
+		withOperandMetricsTLSDaemonSetHook(
+			secretInformer,
+			operatorNamespace,
 		),
 	)
 

@@ -1,0 +1,27 @@
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    service.beta.openshift.io/serving-cert-secret-name: secrets-store-csi-driver-node-metrics-serving-cert
+  labels:
+    app: secrets-store-csi-driver-node-metrics
+  name: secrets-store-csi-driver-node-metrics
+  namespace: ${NAMESPACE}
+spec:
+  ports:
+    # Points at the operand's existing plaintext metrics listener (--metrics-addr=:8095).
+    # Named "https" ahead of actual TLS being served: the operand binary does not yet
+    # support a TLS-serving flag for this listener (see SSCSI-264 Phase 1 decision note,
+    # openspec/changes/sscsi-264/implementation/T1_1-decision-note.md). Provisioning this
+    # Service now lets service-ca issue+rotate a certificate immediately, so the Secret is
+    # ready to mount the moment the operand binary gains TLS support — mirrors the existing
+    # "provision ahead of readiness" pattern already used for the operator's own metrics
+    # Service (config/manifests/stable/secrets-store-csi-driver-operator-metrics-service.yaml).
+    - name: https
+      port: 8095
+      protocol: TCP
+      targetPort: 8095
+  selector:
+    app: secrets-store-csi-driver-node
+  sessionAffinity: None
+  type: ClusterIP
