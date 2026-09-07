@@ -139,6 +139,10 @@ func RunOperator(ctx context.Context, controllerConfig *controllercmd.Controller
 			secretInformer,
 			operatorNamespace,
 		),
+		withOperandPprofPostureHook(
+			secretInformer,
+			operatorNamespace,
+		),
 	)
 
 	klog.Info("Starting the informers")

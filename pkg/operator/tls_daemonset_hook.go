@@ -31,6 +31,22 @@ const (
 	// state, inspectable via `oc get daemonset ... -o yaml` / `oc describe`
 	// without source inspection.
 	operandMetricsTLSStatusAnnotation = "csi.openshift.io/operand-metrics-tls-status"
+
+	// operandPprofEnableArgPrefix is the csi-driver container's flag prefix
+	// that would toggle the operand's pprof listener on. This repo's own
+	// assets/node.yaml never sets it (pprof is disabled-by-default in the
+	// shipped config today per SSCSI-264 T3_1's finding), and per plan §8
+	// Q5's default this change does not add a new ClusterCSIDriver
+	// driverConfig field to expose an administrator-facing toggle either —
+	// this constant exists solely so withOperandPprofPostureHook can assert
+	// the default-disabled invariant against whatever the container's args
+	// actually are, and fail closed if that ever changes without a
+	// TLS-capable operand binary in place.
+	operandPprofEnableArgPrefix = "--enable-pprof="
+	// operandPprofStatusAnnotation records an observable, non-secret status
+	// signal (FR-005/FR-009) describing the operand pprof endpoint's
+	// current default-disabled-vs-enabled-without-TLS-support posture.
+	operandPprofStatusAnnotation = "csi.openshift.io/operand-pprof-status"
 )
 
 // withOperandMetricsTLSDaemonSetHook returns a DaemonSetHookFunc that mounts
@@ -85,6 +101,86 @@ func withOperandMetricsTLSDaemonSetHook(secretInformer corev1informers.SecretInf
 
 		return nil
 	}
+}
+
+// withOperandPprofPostureHook returns a DaemonSetHookFunc that records an
+// observable status signal (FR-005/FR-009) describing the operand pprof
+// endpoint's ("--enable-pprof", operand default port 6065) current TLS
+// posture, and fails closed (FR-006) if pprof is ever found enabled without
+// the shared serving-cert Secret (the same one Phase 1's
+// withOperandMetricsTLSDaemonSetHook already mounts into this container)
+// being available.
+//
+// Per SSCSI-264 Phase 3 T3_1's confirmed finding (grounded in the operand
+// binary's actual source at this change's pinned baseline commit — see
+// openspec/changes/sscsi-264/implementation/T3_1-decision-note.md), the
+// operand binary compiles in pprof but implements no TLS-serving flag for
+// it at all, identical to T1_1's metrics-listener finding. This hook
+// therefore does NOT provision a new Secret/Volume for pprof (per plan §4's
+// "reuse Phase 1's Secret-delivery mechanism, do not duplicate" guidance —
+// if the operand ever gains pprof TLS support, it would read the exact same
+// mounted cert already provisioned by withOperandMetricsTLSDaemonSetHook)
+// and does NOT invent or set any --enable-pprof/--pprof-*-style flag this
+// repo has no basis to set (Constitution "do not guess" boundary; plan §8
+// Q5's default: no new ClusterCSIDriver driverConfig field is added by this
+// change to expose an administrator-facing toggle).
+//
+// Instead, it only reads the csi-driver container's own existing args to
+// determine the current pprof posture:
+//   - Default (no "--enable-pprof=true" arg present, which is always true
+//     of this repo's own assets/node.yaml today): records a
+//     "disabled-by-default" status. No port is opened and no certificate is
+//     requested for it, satisfying FR-009's stated edge case.
+//   - If pprof is ever found enabled (e.g. a future change or a manual
+//     DaemonSet override sets the arg): fails closed if the shared
+//     serving-cert Secret is not yet available (mirrors
+//     withOperandMetricsTLSDaemonSetHook's fail-closed behavior exactly),
+//     and otherwise records an explicit "enabled-no-tls-support" status and
+//     logs a warning — this endpoint is still plaintext regardless of the
+//     Secret's presence, because the operand binary itself cannot serve it
+//     over TLS. This avoids ever silently presenting an enabled pprof
+//     endpoint as TLS-protected when it is not (FR-005/FR-006).
+func withOperandPprofPostureHook(secretInformer corev1informers.SecretInformer, operatorNamespace string) csidrivernodeservicecontroller.DaemonSetHookFunc {
+	return func(_ *opv1.OperatorSpec, daemonSet *appsv1.DaemonSet) error {
+		container, err := findContainer(daemonSet, csiDriverContainerName)
+		if err != nil {
+			return err
+		}
+
+		if daemonSet.Annotations == nil {
+			daemonSet.Annotations = map[string]string{}
+		}
+
+		if !containerArgEnabled(container, operandPprofEnableArgPrefix) {
+			daemonSet.Annotations[operandPprofStatusAnnotation] = "disabled-by-default-no-port-opened-no-cert-requested"
+			klog.V(4).Infof("Operand pprof endpoint is disabled by default on %s container %q (no %strue arg present); no port is opened and no certificate is requested for it (SSCSI-264 FR-009)", daemonSet.Name, csiDriverContainerName, operandPprofEnableArgPrefix)
+			return nil
+		}
+
+		_, err = secretInformer.Lister().Secrets(operatorNamespace).Get(operandMetricsTLSSecretName)
+		if apierrors.IsNotFound(err) {
+			return fmt.Errorf("operand pprof endpoint is enabled (%strue) but the shared serving-cert secret %s/%s is not yet available (service-ca issuance pending); refusing to leave pprof enabled while its cert-readiness precondition is unmet", operandPprofEnableArgPrefix, operatorNamespace, operandMetricsTLSSecretName)
+		}
+		if err != nil {
+			return fmt.Errorf("failed to get shared serving-cert secret %s/%s while checking operand pprof cert-readiness precondition: %w", operatorNamespace, operandMetricsTLSSecretName, err)
+		}
+
+		daemonSet.Annotations[operandPprofStatusAnnotation] = "enabled-no-tls-support-in-operand-binary"
+		klog.Warningf("Operand pprof endpoint is enabled (%strue) on %s container %q, but the operand binary has no TLS-serving flag for this listener (SSCSI-264 T3_1 finding) -- it is serving PLAINTEXT HTTP on this port regardless of the serving-cert secret's presence. This is a known operand-binary limitation, not a misconfiguration in this operator; do not rely on this endpoint's confidentiality until upstream operand TLS support for pprof lands.", operandPprofEnableArgPrefix, daemonSet.Name, csiDriverContainerName)
+
+		return nil
+	}
+}
+
+// containerArgEnabled reports whether container.Args contains an element
+// exactly equal to prefix+"true" (e.g. "--enable-pprof=true").
+func containerArgEnabled(container *corev1.Container, prefix string) bool {
+	for _, arg := range container.Args {
+		if arg == prefix+"true" {
+			return true
+		}
+	}
+	return false
 }
 
 // injectSecretVolumeMount adds a read-only Secret-backed volume to the
