@@ -40,6 +40,8 @@ const (
 func RunOperator(ctx context.Context, controllerConfig *controllercmd.ControllerContext) error {
 	operatorNamespace := controllerConfig.OperatorNamespace
 
+	logOperatorServingCertStatus(operatorServingCertDir)
+
 	// Create core clientset and informers
 	kubeClient := kubeclient.NewForConfigOrDie(rest.AddUserAgent(controllerConfig.KubeConfig, operatorName))
 	kubeInformersForNamespaces := v1helpers.NewKubeInformersForNamespaces(kubeClient, operatorNamespace, "")
