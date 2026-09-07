@@ -1,0 +1,31 @@
+# Bootstrap default for the operator's own --config file (SSCSI-264, T1_1/T1_2).
+#
+# The `config.yaml` key is intentionally shipped EMPTY at install time. This is not an
+# oversight: controllercmd.ControllerFlags.ToConfigObj() explicitly treats a zero-length
+# --config file as "no config, not an error" (vendor/github.com/openshift/library-go/pkg/
+# controller/controllercmd/flags.go), which reproduces today's exact defaulting behavior
+# (configdefaults.SetRecommendedServingInfoDefaults) on first boot -- no crash-loop risk,
+# no behavior change for existing installs upgrading into this manifest.
+#
+# Lifecycle (resolved in T1_3, see pkg/operator/tls_serving_info_asset.go): this literal,
+# static `data.config.yaml: ""` is NEVER actually applied to the cluster by the running
+# operator. WithConditionalStaticResourcesController in pkg/operator/starter.go wraps this
+# asset's AssetFunc with withServingInfoConfigMapAsset, which re-renders `data.config.yaml`
+# from the live ClusterCSIDriver.spec.observedConfig on every resync before resourceapply
+# ever sees these bytes -- the static-resources controller's own resync loop is therefore the
+# single, ongoing owner of this object's `data` once the operator is running, matching how
+# withSecretsStoreCSIDriverAsset already re-renders csidriver.yaml in this same package.
+#
+# The empty default in this file only matters for `go embed` schema/round-trip purposes (it
+# must be valid YAML for a ConfigMap) and for the separate bundle-level bootstrap copy at
+# config/manifests/stable/secrets-store-csi-driver-operator-serving-info-configmap.yaml, which
+# IS applied verbatim (see that file's header) -- but only once, before this operator's first
+# reconcile, to avoid a fresh-install chicken-and-egg (the pod that would render this asset
+# needs its own Deployment's volume mount to already resolve to something).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: secrets-store-csi-driver-operator-serving-info
+  namespace: ${NAMESPACE}
+data:
+  config.yaml: ""

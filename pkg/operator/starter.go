@@ -90,10 +90,14 @@ func RunOperator(ctx context.Context, controllerConfig *controllercmd.Controller
 		kubeClient,
 		dynamicClient,
 		kubeInformersForNamespaces,
-		withSecretsStoreCSIDriverAsset(
-			replaceNamespaceFunc(operatorNamespace),
+		withServingInfoConfigMapAsset(
+			withSecretsStoreCSIDriverAsset(
+				replaceNamespaceFunc(operatorNamespace),
+				clusterCSIDriverLister,
+				csiDriverInformer.Lister(),
+				providerName,
+			),
 			clusterCSIDriverLister,
-			csiDriverInformer.Lister(),
 			providerName,
 		),
 		[]string{
@@ -105,6 +109,7 @@ func RunOperator(ctx context.Context, controllerConfig *controllercmd.Controller
 			"rbac/secretproviderclasses_role.yaml",
 			"rbac/secretproviderclasses_binding.yaml",
 			"network-policy/allow-ingress-to-metrics-operand.yaml",
+			servingInfoConfigMapAssetName,
 		},
 		func() bool {
 			return getOperatorSyncState(operatorClient) == opv1.Managed
