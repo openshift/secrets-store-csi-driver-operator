@@ -13,7 +13,7 @@ const (
 	DaemonSetName = "secrets-store-csi-driver-node"
 	// CSIDriverContainer is the driver container within the DaemonSet.
 	CSIDriverContainer = "csi-driver"
-	// TestImage matches hack/e2e.sh's E2E_TEST_IMAGE.
+	// TestImage is the multiarch busybox image used for e2e workload pods.
 	TestImage = "quay.io/openshifttest/busybox:multiarch"
 
 	PollInterval   = 2 * time.Second

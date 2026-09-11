@@ -13,10 +13,6 @@ import (
 
 const busyboxAppLabel = "busybox"
 
-func readMountedSecret(namespace, podName, secretName string) (string, error) {
-	return env.ReadMountedFile(namespace, podName, "/mnt/secrets-store/"+secretName)
-}
-
 func azureKeyVaultObjectsYAML(secretName, objectAlias string) string {
 	if objectAlias == "" {
 		return fmt.Sprintf(`array:

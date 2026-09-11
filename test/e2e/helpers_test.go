@@ -10,8 +10,8 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/openshift/secrets-store-csi-driver-operator/test/e2e/common"
 	opv1 "github.com/openshift/api/operator/v1"
+	"github.com/openshift/secrets-store-csi-driver-operator/test/e2e/common"
 	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"

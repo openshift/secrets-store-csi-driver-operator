@@ -11,6 +11,7 @@ import (
 
 	. "github.com/onsi/gomega"
 
+	"github.com/openshift/secrets-store-csi-driver-operator/test/e2e/common"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
@@ -42,9 +43,6 @@ var secretProviderClassGVR = schema.GroupVersionResource{
 // OIDCIssuer returns the cluster service account issuer URL. Required for
 // workload identity federation on Azure, AWS, and GCP.
 func (e *Env) OIDCIssuer() (string, error) {
-	if e.OpenShiftConfig == nil {
-		return "", fmt.Errorf("OpenShift config client is not available")
-	}
 	ctx, cancel := e.WithAPITimeout()
 	defer cancel()
 
@@ -131,7 +129,7 @@ func (e *Env) DeleteManifest(manifest, defaultNamespace string) error {
 
 // ApplyManifestFromURL fetches and applies a remote multi-document manifest.
 func (e *Env) ApplyManifestFromURL(url, defaultNamespace string) error {
-	manifest, err := fetchManifest(url, e.APICallTimeout)
+	manifest, err := fetchManifest(url, common.APICallTimeout)
 	if err != nil {
 		return err
 	}
@@ -140,7 +138,7 @@ func (e *Env) ApplyManifestFromURL(url, defaultNamespace string) error {
 
 // DeleteManifestFromURL fetches and deletes objects from a remote manifest.
 func (e *Env) DeleteManifestFromURL(url, defaultNamespace string) error {
-	manifest, err := fetchManifest(url, e.APICallTimeout)
+	manifest, err := fetchManifest(url, common.APICallTimeout)
 	if err != nil {
 		return err
 	}
@@ -435,7 +433,7 @@ func (e *Env) CSIVolume(name, spcName string) corev1.Volume {
 		Name: name,
 		VolumeSource: corev1.VolumeSource{
 			CSI: &corev1.CSIVolumeSource{
-				Driver:           e.DriverName,
+				Driver:           common.DriverName,
 				ReadOnly:         ptr.To(true),
 				VolumeAttributes: map[string]string{"secretProviderClass": spcName},
 			},
@@ -447,7 +445,7 @@ func (e *Env) CSIVolume(name, spcName string) corev1.Volume {
 func (e *Env) BusyboxContainer(name string, mounts []corev1.VolumeMount, env ...corev1.EnvVar) corev1.Container {
 	return corev1.Container{
 		Name:            name,
-		Image:           e.TestImage,
+		Image:           common.TestImage,
 		ImagePullPolicy: corev1.PullIfNotPresent,
 		Command:         []string{"/bin/sleep", "3600"},
 		VolumeMounts:    mounts,
@@ -459,7 +457,7 @@ func (e *Env) BusyboxContainer(name string, mounts []corev1.VolumeMount, env ...
 func (e *Env) InlineVolumePodSpec(spcName string, privileged bool) corev1.PodSpec {
 	container := corev1.Container{
 		Name:    "test-container",
-		Image:   e.TestImage,
+		Image:   common.TestImage,
 		Command: []string{"sh", "-c", "sleep 3600"},
 		VolumeMounts: []corev1.VolumeMount{{
 			Name:      "secrets-store-inline",
@@ -530,7 +528,7 @@ func (e *Env) SecretOwnerReferenceCount(namespace, secretName string) (int, erro
 func (e *Env) WaitForSecretOwnerCount(namespace, secretName string, want int) {
 	Eventually(func() (int, error) {
 		return e.SecretOwnerReferenceCount(namespace, secretName)
-	}, e.PollTimeout, e.PollInterval).Should(Equal(want), "secret %s/%s ownerReferences did not converge to %d", namespace, secretName, want)
+	}, common.PollTimeout, common.PollInterval).Should(Equal(want), "secret %s/%s ownerReferences did not converge to %d", namespace, secretName, want)
 }
 
 // WaitForSecretDeleted polls until secretName in namespace is gone.
@@ -538,7 +536,7 @@ func (e *Env) WaitForSecretDeleted(namespace, secretName string) {
 	Eventually(func() error {
 		_, err := e.Kube.CoreV1().Secrets(namespace).Get(context.Background(), secretName, metav1.GetOptions{})
 		return err
-	}, e.PollTimeout, e.PollInterval).Should(Satisfy(apierrors.IsNotFound), "secret %s/%s was not deleted", namespace, secretName)
+	}, common.PollTimeout, common.PollInterval).Should(Satisfy(apierrors.IsNotFound), "secret %s/%s was not deleted", namespace, secretName)
 }
 
 // --- Wait helpers ---
@@ -561,7 +559,7 @@ func (e *Env) WaitPodReady(namespace, podName string) {
 			return false, err
 		}
 		return IsPodReady(pod), nil
-	}, e.PollTimeout, e.PollInterval).Should(BeTrue(), "pod %s/%s did not become Ready", namespace, podName)
+	}, common.PollTimeout, common.PollInterval).Should(BeTrue(), "pod %s/%s did not become Ready", namespace, podName)
 }
 
 // WaitForLabeledPodsReady waits until all pods with app=<label> are Ready.
@@ -580,7 +578,7 @@ func (e *Env) WaitForLabeledPodsReady(namespace, label string, timeout time.Dura
 			}
 		}
 		return true, nil
-	}, timeout, e.PollInterval).Should(BeTrue(), "pods with label app=%s in %s did not become Ready", label, namespace)
+	}, timeout, common.PollInterval).Should(BeTrue(), "pods with label app=%s in %s did not become Ready", label, namespace)
 }
 
 // WaitForPodDeleted polls until podName is gone from namespace.
@@ -588,7 +586,7 @@ func (e *Env) WaitForPodDeleted(namespace, podName string) {
 	Eventually(func() error {
 		_, err := e.Kube.CoreV1().Pods(namespace).Get(context.Background(), podName, metav1.GetOptions{})
 		return err
-	}, e.PollTimeout, e.PollInterval).Should(Satisfy(apierrors.IsNotFound), "pod %s/%s was not deleted", namespace, podName)
+	}, common.PollTimeout, common.PollInterval).Should(Satisfy(apierrors.IsNotFound), "pod %s/%s was not deleted", namespace, podName)
 }
 
 // WaitForPodMountFailure polls until pod events contain a FailedMount whose
@@ -607,7 +605,7 @@ func (e *Env) WaitForPodMountFailure(namespace, podName, wantSubstring string) {
 			}
 		}
 		return false, nil
-	}, e.PollTimeout, e.PollInterval).Should(BeTrue(), "pod %s/%s did not emit FailedMount containing %q", namespace, podName, wantSubstring)
+	}, common.PollTimeout, common.PollInterval).Should(BeTrue(), "pod %s/%s did not emit FailedMount containing %q", namespace, podName, wantSubstring)
 }
 
 // WaitProviderReady polls until all pods with app=<label> in namespace are Ready.
@@ -628,31 +626,31 @@ func (e *Env) WaitProviderReady(namespace, appLabel string) {
 			}
 		}
 		return true, nil
-	}, e.PollTimeout, e.PollInterval).Should(BeTrue(), "provider pods with label app=%s in namespace %q did not become Ready", appLabel, namespace)
+	}, common.PollTimeout, common.PollInterval).Should(BeTrue(), "provider pods with label app=%s in namespace %q did not become Ready", appLabel, namespace)
 }
 
 // WaitForDaemonSetRollout polls until the node DaemonSet has rolled out.
 func (e *Env) WaitForDaemonSetRollout() {
 	Eventually(func() (bool, error) {
-		ds, err := e.Kube.AppsV1().DaemonSets(e.OperatorNamespace).Get(context.Background(), e.DaemonSetName, metav1.GetOptions{})
+		ds, err := e.Kube.AppsV1().DaemonSets(common.OperatorNamespace).Get(context.Background(), common.DaemonSetName, metav1.GetOptions{})
 		if err != nil {
 			return false, err
 		}
 		return ds.Status.DesiredNumberScheduled > 0 &&
 			ds.Status.UpdatedNumberScheduled == ds.Status.DesiredNumberScheduled &&
 			ds.Status.NumberAvailable == ds.Status.DesiredNumberScheduled, nil
-	}, e.PollTimeout, e.PollInterval).Should(BeTrue(), "DaemonSet %s/%s did not finish rolling out", e.OperatorNamespace, e.DaemonSetName)
+	}, common.PollTimeout, common.PollInterval).Should(BeTrue(), "DaemonSet %s/%s did not finish rolling out", common.OperatorNamespace, common.DaemonSetName)
 }
 
 // DaemonSetArgValue returns the value portion of the csi-driver container's
 // arg with the given prefix.
 func (e *Env) DaemonSetArgValue(prefix string) (string, error) {
-	ds, err := e.Kube.AppsV1().DaemonSets(e.OperatorNamespace).Get(context.Background(), e.DaemonSetName, metav1.GetOptions{})
+	ds, err := e.Kube.AppsV1().DaemonSets(common.OperatorNamespace).Get(context.Background(), common.DaemonSetName, metav1.GetOptions{})
 	if err != nil {
 		return "", err
 	}
 	for _, c := range ds.Spec.Template.Spec.Containers {
-		if c.Name != e.CSIDriverContainer {
+		if c.Name != common.CSIDriverContainer {
 			continue
 		}
 		for _, arg := range c.Args {
@@ -660,16 +658,16 @@ func (e *Env) DaemonSetArgValue(prefix string) (string, error) {
 				return strings.TrimPrefix(arg, prefix), nil
 			}
 		}
-		return "", fmt.Errorf("arg with prefix %q not found on container %q", prefix, e.CSIDriverContainer)
+		return "", fmt.Errorf("arg with prefix %q not found on container %q", prefix, common.CSIDriverContainer)
 	}
-	return "", fmt.Errorf("container %q not found in DaemonSet %s/%s", e.CSIDriverContainer, e.OperatorNamespace, e.DaemonSetName)
+	return "", fmt.Errorf("container %q not found in DaemonSet %s/%s", common.CSIDriverContainer, common.OperatorNamespace, common.DaemonSetName)
 }
 
 // WaitForTokenRequestAudiences polls the live CSIDriver until tokenRequests
 // include wantAudience.
 func (e *Env) WaitForTokenRequestAudiences(wantAudience string) {
 	Eventually(func() (bool, error) {
-		driver, err := e.Kube.StorageV1().CSIDrivers().Get(context.Background(), e.DriverName, metav1.GetOptions{})
+		driver, err := e.Kube.StorageV1().CSIDrivers().Get(context.Background(), common.DriverName, metav1.GetOptions{})
 		if err != nil {
 			return false, err
 		}
@@ -679,5 +677,5 @@ func (e *Env) WaitForTokenRequestAudiences(wantAudience string) {
 			}
 		}
 		return false, nil
-	}, e.PollTimeout, e.PollInterval).Should(BeTrue(), "CSIDriver %q tokenRequests did not converge to include audience %q", e.DriverName, wantAudience)
+	}, common.PollTimeout, common.PollInterval).Should(BeTrue(), "CSIDriver %q tokenRequests did not converge to include audience %q", common.DriverName, wantAudience)
 }

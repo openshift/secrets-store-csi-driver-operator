@@ -19,8 +19,6 @@ import (
 	opv1 "github.com/openshift/api/operator/v1"
 	"github.com/openshift/secrets-store-csi-driver-operator/test/e2e/common"
 	"github.com/openshift/secrets-store-csi-driver-operator/test/e2e/provider"
-	operatorv1client "github.com/openshift/client-go/operator/clientset/versioned"
-	operatorv1typed "github.com/openshift/client-go/operator/clientset/versioned/typed/operator/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
 )
@@ -32,13 +30,12 @@ const (
 )
 
 var (
-	env                    *provider.Env
-	clusterCSIDriverClient operatorv1typed.ClusterCSIDriverInterface
+	env *provider.Env
+	az  *azureClients
 
 	resourceGroup string
 	location      string
 	oidcIssuer    string
-	tenantID      string
 
 	runSuffix string
 
@@ -57,7 +54,9 @@ var _ = BeforeSuite(func() {
 
 	runSuffix = fmt.Sprintf("%06x", rand.Uint32())[:6]
 
-	Expect(azInit()).To(Succeed(), "unable to initialize Azure SDK credentials/clients")
+	var err error
+	az, err = newAzureClients()
+	Expect(err).NotTo(HaveOccurred(), "unable to initialize Azure SDK credentials/clients")
 
 	restConfig, err := config.GetConfig()
 	Expect(err).NotTo(HaveOccurred(), "unable to load kubeconfig")
@@ -65,27 +64,20 @@ var _ = BeforeSuite(func() {
 	env, err = provider.NewEnv(restConfig)
 	Expect(err).NotTo(HaveOccurred(), "unable to build provider e2e environment")
 
-	operatorClientset, err := operatorv1client.NewForConfig(restConfig)
-	Expect(err).NotTo(HaveOccurred(), "unable to build operator client")
-	clusterCSIDriverClient = operatorClientset.OperatorV1().ClusterCSIDrivers()
-
-	driver, err := clusterCSIDriverClient.Get(context.Background(), common.DriverName, metav1.GetOptions{})
+	driver, err := env.ClusterCSIDriver.Get(context.Background(), common.DriverName, metav1.GetOptions{})
 	Expect(err).NotTo(HaveOccurred(), "ClusterCSIDriver %q must already exist -- deploy the operator before running this suite", common.DriverName)
 	originalDriverConfig = *driver.Spec.DriverConfig.DeepCopy()
 
 	resourceGroup, err = getAzureResourceGroup()
 	Expect(err).NotTo(HaveOccurred(), "unable to resolve the cluster's Azure resource group")
 
-	location, err = azResourceGroupLocation(resourceGroup)
+	location, err = az.ResourceGroupLocation(resourceGroup)
 	Expect(err).NotTo(HaveOccurred(), "unable to resolve the resource group's location")
 
 	oidcIssuer, err = env.OIDCIssuer()
 	Expect(err).NotTo(HaveOccurred(), "unable to resolve the cluster's OIDC issuer")
 
-	tenantID, err = azTenantID()
-	Expect(err).NotTo(HaveOccurred(), "unable to resolve the Azure tenant ID")
-
-	GinkgoWriter.Printf("resourceGroup=%s location=%s oidcIssuer=%s runSuffix=%s\n", resourceGroup, location, oidcIssuer, runSuffix)
+	GinkgoWriter.Printf("resourceGroup=%s location=%s oidcIssuer=%s tenantID=%s runSuffix=%s\n", resourceGroup, location, oidcIssuer, az.TenantID, runSuffix)
 })
 
 var _ = AfterSuite(func() {
@@ -93,9 +85,6 @@ var _ = AfterSuite(func() {
 })
 
 func getAzureResourceGroup() (string, error) {
-	if env.OpenShiftConfig == nil {
-		return "", fmt.Errorf("OpenShift config client is not available")
-	}
 	ctx, cancel := env.WithAPITimeout()
 	defer cancel()
 

@@ -4,11 +4,13 @@ package provider
 
 import (
 	"context"
-	"time"
+	"fmt"
 
-	"github.com/openshift/secrets-store-csi-driver-operator/test/e2e/common"
 	openshiftconfigclient "github.com/openshift/client-go/config/clientset/versioned"
 	configv1client "github.com/openshift/client-go/config/clientset/versioned/typed/config/v1"
+	operatorv1client "github.com/openshift/client-go/operator/clientset/versioned"
+	operatorv1typed "github.com/openshift/client-go/operator/clientset/versioned/typed/operator/v1"
+	"github.com/openshift/secrets-store-csi-driver-operator/test/e2e/common"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/discovery/cached/memory"
@@ -22,23 +24,13 @@ const openShiftPrivilegedSCCClusterRole = "system:openshift:scc:privileged"
 
 // Env holds clients and configuration shared across provider e2e suites.
 type Env struct {
-	RestConfig *rest.Config
-	Kube       kubernetes.Interface
-	Dynamic    dynamic.Interface
-	Discovery  discovery.DiscoveryInterface
-	RESTMapper meta.RESTMapper
-	// OpenShiftConfig is nil on plain Kubernetes clusters.
-	OpenShiftConfig configv1client.ConfigV1Interface
-
-	DriverName         string
-	OperatorNamespace  string
-	DaemonSetName      string
-	CSIDriverContainer string
-	TestImage          string
-
-	PollInterval   time.Duration
-	PollTimeout    time.Duration
-	APICallTimeout time.Duration
+	RestConfig       *rest.Config
+	Kube             kubernetes.Interface
+	Dynamic          dynamic.Interface
+	Discovery        discovery.DiscoveryInterface
+	ClusterCSIDriver operatorv1typed.ClusterCSIDriverInterface
+	RESTMapper       meta.RESTMapper
+	OpenShiftConfig  configv1client.ConfigV1Interface
 }
 
 // NewEnv builds clients from cfg and applies package defaults.
@@ -58,31 +50,32 @@ func NewEnv(cfg *rest.Config) (*Env, error) {
 		return nil, err
 	}
 
-	env := &Env{
-		RestConfig:         cfg,
-		Kube:               kubeClient,
-		Dynamic:            dynamicClient,
-		Discovery:          discoveryClient,
-		RESTMapper:         restmapper.NewDeferredDiscoveryRESTMapper(memory.NewMemCacheClient(discoveryClient)),
-		DriverName:         common.DriverName,
-		OperatorNamespace:  common.OperatorNamespace,
-		DaemonSetName:      common.DaemonSetName,
-		CSIDriverContainer: common.CSIDriverContainer,
-		TestImage:          common.TestImage,
-		PollInterval:       common.PollInterval,
-		PollTimeout:        common.PollTimeout,
-		APICallTimeout:     common.APICallTimeout,
-	}
-
 	configClientset, err := openshiftconfigclient.NewForConfig(cfg)
-	if err == nil {
-		env.OpenShiftConfig = configClientset.ConfigV1()
+	if err != nil {
+		return nil, err
+	}
+	openShiftConfig := configClientset.ConfigV1()
+	if openShiftConfig == nil {
+		return nil, fmt.Errorf("OpenShift config client is not available")
 	}
 
-	return env, nil
+	operatorClientset, err := operatorv1client.NewForConfig(cfg)
+	if err != nil {
+		return nil, err
+	}
+
+	return &Env{
+		RestConfig:       cfg,
+		Kube:             kubeClient,
+		Dynamic:          dynamicClient,
+		Discovery:        discoveryClient,
+		RESTMapper:       restmapper.NewDeferredDiscoveryRESTMapper(memory.NewMemCacheClient(discoveryClient)),
+		OpenShiftConfig:  openShiftConfig,
+		ClusterCSIDriver: operatorClientset.OperatorV1().ClusterCSIDrivers(),
+	}, nil
 }
 
-// WithAPITimeout returns a context bounded by APICallTimeout.
+// WithAPITimeout returns a context bounded by common.APICallTimeout.
 func (e *Env) WithAPITimeout() (context.Context, context.CancelFunc) {
-	return context.WithTimeout(context.Background(), e.APICallTimeout)
+	return context.WithTimeout(context.Background(), common.APICallTimeout)
 }

@@ -8,6 +8,7 @@ import (
 	. "github.com/onsi/gomega"
 
 	opv1 "github.com/openshift/api/operator/v1"
+	"github.com/openshift/secrets-store-csi-driver-operator/test/e2e/common"
 	"k8s.io/utils/ptr"
 )
 
@@ -26,12 +27,6 @@ const (
 	rotationPodName = "sscsi-e2e-rotation-pod"
 )
 
-// Describe("Azure provider e2e") ports the upstream azure.bats scenarios to
-// this operator repo, exercising the real Azure provider against a live
-// OpenShift-on-Azure cluster while configuring tokenRequests through
-// driverConfig.secretsStore (instead of a manual oc patch csidriver).
-//
-// Specs are Ordered to preserve azure.bats's sequential assumptions.
 var _ = Describe("Azure provider e2e", Ordered, func() {
 	var (
 		mainNamespace     string
@@ -57,26 +52,26 @@ var _ = Describe("Azure provider e2e", Ordered, func() {
 		}
 
 		By("creating a Key Vault and secret")
-		Expect(azKeyVaultCreate(keyVaultName, resourceGroup, location)).To(Succeed())
-		Expect(azKeyVaultSecretSet(keyVaultName, batsSecretName, batsSecretValue)).To(Succeed())
+		Expect(az.KeyVaultCreate(keyVaultName, resourceGroup, location)).To(Succeed())
+		Expect(az.KeyVaultSecretSet(keyVaultName, batsSecretName, batsSecretValue)).To(Succeed())
 
 		By("creating a user-assigned managed identity")
-		Expect(azIdentityCreate(identityName, resourceGroup)).To(Succeed())
+		Expect(az.IdentityCreate(identityName, resourceGroup, location)).To(Succeed())
 		var err error
-		clientID, err = azIdentityClientID(identityName, resourceGroup)
+		clientID, err = az.IdentityClientID(identityName, resourceGroup)
 		Expect(err).NotTo(HaveOccurred())
 
 		By("creating federated identity credentials for each test namespace")
 		for i, ns := range []string{mainNamespace, testNS, negativeTestNS} {
 			subject := fmt.Sprintf("system:serviceaccount:%s:default", ns)
 			credName := fmt.Sprintf("sscsi-e2e-fed-cred-%s-%d", runSuffix, i)
-			Expect(azFederatedCredentialCreate(credName, identityName, resourceGroup, oidcIssuer, subject, azureWIFAudience)).To(Succeed())
+			Expect(az.FederatedCredentialCreate(credName, identityName, resourceGroup, oidcIssuer, subject, azureWIFAudience)).To(Succeed())
 		}
 
 		By("granting the identity access to read the Key Vault secret")
-		principalID, err := azIdentityPrincipalID(identityName, resourceGroup)
+		principalID, err := az.IdentityPrincipalID(identityName, resourceGroup)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(azKeyVaultSetPolicy(keyVaultName, principalID)).To(Succeed())
+		Expect(az.KeyVaultSetPolicy(keyVaultName, resourceGroup, principalID)).To(Succeed())
 
 		By("installing the real Azure provider")
 		Expect(installAzureProvider()).To(Succeed())
@@ -107,16 +102,16 @@ var _ = Describe("Azure provider e2e", Ordered, func() {
 		if err := uninstallAzureProvider(); err != nil {
 			GinkgoWriter.Printf("unable to uninstall Azure provider: %v\n", err)
 		}
-		if err := azKeyVaultDelete(keyVaultName, resourceGroup); err != nil {
+		if err := az.KeyVaultDelete(keyVaultName, resourceGroup, location); err != nil {
 			GinkgoWriter.Printf("unable to delete Key Vault %q: %v\n", keyVaultName, err)
 		}
-		if err := azIdentityDelete(identityName, resourceGroup); err != nil {
+		if err := az.IdentityDelete(identityName, resourceGroup); err != nil {
 			GinkgoWriter.Printf("unable to delete identity %q: %v\n", identityName, err)
 		}
 	})
 
 	It("deploys an azure SecretProviderClass", func() {
-		Expect(deploySecretProviderClass(mainNamespace, spcAzure, clientID, keyVaultName, tenantID, batsSecretName)).To(Succeed())
+		Expect(deploySecretProviderClass(mainNamespace, spcAzure, clientID, keyVaultName, az.TenantID, batsSecretName)).To(Succeed())
 		providerName, err := env.SecretProviderClassProvider(mainNamespace, spcAzure)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(providerName).To(Equal("azure"))
@@ -129,8 +124,8 @@ var _ = Describe("Azure provider e2e", Ordered, func() {
 
 	It("reads the Azure Key Vault secret from the inline volume pod", func() {
 		Eventually(func() (string, error) {
-			return readMountedSecret(mainNamespace, inlinePodName, batsSecretName)
-		}, env.PollTimeout, env.PollInterval).Should(Equal(batsSecretValue))
+			return env.ReadMountedFile(mainNamespace, inlinePodName, "/mnt/secrets-store/"+batsSecretName)
+		}, common.PollTimeout, common.PollInterval).Should(Equal(batsSecretValue))
 	})
 
 	It("deletes the inline volume pod cleanly", func() {
@@ -140,7 +135,7 @@ var _ = Describe("Azure provider e2e", Ordered, func() {
 
 	Context("sync with Kubernetes secrets", func() {
 		It("creates the sync SecretProviderClass and busybox deployments", func() {
-			Expect(deploySyncSecretProviderClass(mainNamespace, spcAzureSync, clientID, keyVaultName, tenantID, batsSecretName, syncLabelValue)).To(Succeed())
+			Expect(deploySyncSecretProviderClass(mainNamespace, spcAzureSync, clientID, keyVaultName, az.TenantID, batsSecretName, syncLabelValue)).To(Succeed())
 			Expect(deploySyncDeployment(mainNamespace, deploymentOne, spcAzureSync)).To(Succeed())
 			Expect(deploySyncDeployment(mainNamespace, deploymentTwo, spcAzureSync)).To(Succeed())
 			env.WaitForLabeledPodsReady(mainNamespace, "busybox", 90*time.Second)
@@ -184,7 +179,7 @@ var _ = Describe("Azure provider e2e", Ordered, func() {
 
 	Context("namespaced SecretProviderClass", func() {
 		It("deploys cluster- and namespace-scoped SPCs and a busybox deployment in test-ns", func() {
-			Expect(deployNamespacedSecretProviderClasses(mainNamespace, testNS, clientID, keyVaultName, tenantID, batsSecretName)).To(Succeed())
+			Expect(deployNamespacedSecretProviderClasses(mainNamespace, testNS, clientID, keyVaultName, az.TenantID, batsSecretName)).To(Succeed())
 			Expect(deploySyncDeployment(testNS, deploymentOne, spcAzureSync)).To(Succeed())
 			env.WaitForLabeledPodsReady(testNS, "busybox", 60*time.Second)
 		})
@@ -222,7 +217,7 @@ var _ = Describe("Azure provider e2e", Ordered, func() {
 				var err error
 				podName, err = env.PodNameByLabel(negativeTestNS, "busybox")
 				return err
-			}, env.PollTimeout, env.PollInterval).Should(Succeed())
+			}, common.PollTimeout, common.PollInterval).Should(Succeed())
 			env.WaitForPodMountFailure(negativeTestNS, podName, fmt.Sprintf("failed to get secretproviderclass %s/%s", negativeTestNS, spcAzureSync))
 			Expect(env.DeleteDeployment(negativeTestNS, deploymentOne)).To(Succeed())
 		})
@@ -230,7 +225,7 @@ var _ = Describe("Azure provider e2e", Ordered, func() {
 
 	Context("multiple SecretProviderClass", func() {
 		It("deploys multiple SecretProviderClasses", func() {
-			Expect(deployMultipleSecretProviderClasses(mainNamespace, clientID, keyVaultName, tenantID, batsSecretName)).To(Succeed())
+			Expect(deployMultipleSecretProviderClasses(mainNamespace, clientID, keyVaultName, az.TenantID, batsSecretName)).To(Succeed())
 			for _, name := range []string{"azure-spc-0", "azure-spc-1"} {
 				providerName, err := env.SecretProviderClassProvider(mainNamespace, name)
 				Expect(err).NotTo(HaveOccurred())
@@ -268,10 +263,10 @@ var _ = Describe("Azure provider e2e", Ordered, func() {
 	Context("operator secret rotation against the real Key Vault", func() {
 		BeforeAll(func() {
 			By("deploying a pod for the rotation assertion")
-			Expect(deploySecretProviderClass(mainNamespace, spcAzure, clientID, keyVaultName, tenantID, batsSecretName)).To(Succeed())
+			Expect(deploySecretProviderClass(mainNamespace, spcAzure, clientID, keyVaultName, az.TenantID, batsSecretName)).To(Succeed())
 			Expect(createInlineVolumePod(mainNamespace, rotationPodName, spcAzure)).To(Succeed())
 			env.WaitPodReady(mainNamespace, rotationPodName)
-			got, err := readMountedSecret(mainNamespace, rotationPodName, batsSecretName)
+			got, err := env.ReadMountedFile(mainNamespace, rotationPodName, "/mnt/secrets-store/"+batsSecretName)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(got).To(Equal(rotationSecretVal))
 		})

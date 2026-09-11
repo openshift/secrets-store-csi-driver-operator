@@ -73,9 +73,9 @@ GO_TEST_PACKAGES :=./pkg/... ./cmd/...
 # persistent local/dev cluster).
 RUN_IRREVERSIBLE_E2E ?= true
 
-# RUN_AZURE_E2E=true runs the real-Azure WIF Ginkgo suite in test/e2e/azure
-# after the cloud-agnostic test/e2e suite. Set by the operator-e2e-azure CI
-# job only; generic jobs (operator-e2e-fips, tls-scanner, etc.) leave this unset.
+# RUN_AZURE_E2E=true also runs the Azure suite in
+# test/e2e/azure after the cloud-agnostic test/e2e suite.
+# Unset by default; pass RUN_AZURE_E2E=true for Azure testing.
 RUN_AZURE_E2E ?=
 
 GINKGO_ARGS = -ginkgo.vv -ginkgo.poll-progress-after=30s -ginkgo.poll-progress-interval=30s
