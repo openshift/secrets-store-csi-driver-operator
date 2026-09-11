@@ -7,6 +7,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	"github.com/openshift/secrets-store-csi-driver-operator/test/e2e/common"
 	opv1 "github.com/openshift/api/operator/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -23,8 +24,8 @@ import (
 func patchLiveCSIDriverTokenRequests(audiences []string) {
 	ctx, cancel := withAPITimeout()
 	defer cancel()
-	driver, err := kubeClient.StorageV1().CSIDrivers().Get(ctx, driverName, metav1.GetOptions{})
-	Expect(err).NotTo(HaveOccurred(), "failed to read CSIDriver %q before patching tokenRequests", driverName)
+	driver, err := kubeClient.StorageV1().CSIDrivers().Get(ctx, common.DriverName, metav1.GetOptions{})
+	Expect(err).NotTo(HaveOccurred(), "failed to read CSIDriver %q before patching tokenRequests", common.DriverName)
 	original := driver.Spec.TokenRequests
 	DeferCleanup(setLiveCSIDriverTokenRequests, original)
 
@@ -41,14 +42,14 @@ func setLiveCSIDriverTokenRequests(trs []storagev1.TokenRequest) {
 	Eventually(func() error {
 		ctx, cancel := withAPITimeout()
 		defer cancel()
-		driver, err := kubeClient.StorageV1().CSIDrivers().Get(ctx, driverName, metav1.GetOptions{})
+		driver, err := kubeClient.StorageV1().CSIDrivers().Get(ctx, common.DriverName, metav1.GetOptions{})
 		if err != nil {
 			return err
 		}
 		driver.Spec.TokenRequests = trs
 		_, err = kubeClient.StorageV1().CSIDrivers().Update(ctx, driver, metav1.UpdateOptions{})
 		return err
-	}, pollTimeout, pollInterval).Should(Succeed(), "failed to set CSIDriver %q tokenRequests to %+v", driverName, trs)
+	}, common.PollTimeout, common.PollInterval).Should(Succeed(), "failed to set CSIDriver %q tokenRequests to %+v", common.DriverName, trs)
 }
 
 // liveTokenRequestAudiences returns the audiences currently on the live
@@ -56,7 +57,7 @@ func setLiveCSIDriverTokenRequests(trs []storagev1.TokenRequest) {
 func liveTokenRequestAudiences() ([]string, error) {
 	ctx, cancel := withAPITimeout()
 	defer cancel()
-	driver, err := kubeClient.StorageV1().CSIDrivers().Get(ctx, driverName, metav1.GetOptions{})
+	driver, err := kubeClient.StorageV1().CSIDrivers().Get(ctx, common.DriverName, metav1.GetOptions{})
 	if err != nil {
 		return nil, err
 	}
@@ -78,7 +79,7 @@ var _ = Describe("tokenRequests", Ordered, func() {
 
 			// driverConfig stays omitted for the whole check; the operator
 			// must never overwrite the manually-patched tokenRequests.
-			Consistently(liveTokenRequestAudiences, 30*time.Second, pollInterval).
+			Consistently(liveTokenRequestAudiences, 30*time.Second, common.PollInterval).
 				Should(Equal([]string{manualAudience}), "operator must preserve manually-patched tokenRequests when driverConfig is omitted")
 		})
 
@@ -90,7 +91,7 @@ var _ = Describe("tokenRequests", Ordered, func() {
 				Type: opv1.TokenRequestsUnmanaged,
 			})
 
-			Consistently(liveTokenRequestAudiences, 30*time.Second, pollInterval).
+			Consistently(liveTokenRequestAudiences, 30*time.Second, common.PollInterval).
 				Should(Equal([]string{manualAudience}), "operator must preserve manually-patched tokenRequests when tokenRequests.type is Unmanaged")
 		})
 	})
@@ -151,8 +152,8 @@ var _ = Describe("tokenRequests", Ordered, func() {
 		It("rejects an attempt to revert tokenRequests.type back to Unmanaged", func() {
 			ctx, cancel := withAPITimeout()
 			defer cancel()
-			driver, err := clusterCSIDriverClient.Get(ctx, driverName, metav1.GetOptions{})
-			Expect(err).NotTo(HaveOccurred(), "failed to read ClusterCSIDriver %q before attempting the reverting update", driverName)
+			driver, err := clusterCSIDriverClient.Get(ctx, common.DriverName, metav1.GetOptions{})
+			Expect(err).NotTo(HaveOccurred(), "failed to read ClusterCSIDriver %q before attempting the reverting update", common.DriverName)
 
 			driver.Spec.DriverConfig = opv1.CSIDriverConfigSpec{
 				DriverType: opv1.SecretsStoreDriverType,

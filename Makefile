@@ -111,9 +111,3 @@ docker-push-coverage: ## Push coverage Docker image.
 .PHONY: e2e-coverage-collect
 e2e-coverage-collect: ## Collect e2e coverage data and optionally upload to Codecov.
 	ARTIFACT_DIR=$${ARTIFACT_DIR:-.} hack/e2e-coverage.sh collect
-
-# Alias for make test-e2e RUN_AZURE_E2E=true (hack/e2e.sh + test/e2e + test/e2e/azure).
-test-e2e-azure-wif:
-	$(MAKE) test-e2e RUN_AZURE_E2E=true
-
-.PHONY: test-e2e-azure-wif

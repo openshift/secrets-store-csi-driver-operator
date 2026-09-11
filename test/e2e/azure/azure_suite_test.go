@@ -4,68 +4,35 @@
 // secret is fetched by the real Azure provider and mounted into a pod,
 // using audiences configured declaratively through ClusterCSIDriver
 // instead of a manual `oc patch csidriver` workaround.
-//
-// This suite creates and destroys real Azure resources (Key Vault, a
-// user-assigned managed identity, and a federated identity credential)
-// directly through the Azure SDK for Go (no az CLI dependency) and
-// requires:
-//   - a live OpenShift cluster with Azure Workload Identity enabled (OIDC
-//     issuer exposed) and the operator/driver already deployed;
-//   - the oc CLI in $PATH, plus network access to the Azure Resource
-//     Manager and Key Vault endpoints and to GitHub (to fetch the pinned
-//     provider-azure-installer.yaml release manifest);
-//   - Azure service principal credentials at
-//     $CLUSTER_PROFILE_DIR/osServicePrincipal.json (the standard OpenShift
-//     CI convention -- matches the credentials the existing
-//     openshift-e2e-azure-csi-secrets-store-azure-test step already uses);
-//   - RUN_AZURE_E2E=true (set by make test-e2e RUN_AZURE_E2E=true or the
-//     operator-e2e-azure CI job). The suite skips when this is unset so
-//     generic make test-e2e runs do not require a WIF cluster.
 package azure
 
 import (
 	"context"
 	"fmt"
-	"math/rand"
+	"math/rand/v2"
 	"os"
-	"path/filepath"
 	"testing"
-	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
 	opv1 "github.com/openshift/api/operator/v1"
+	"github.com/openshift/secrets-store-csi-driver-operator/test/e2e/common"
+	"github.com/openshift/secrets-store-csi-driver-operator/test/e2e/provider"
 	operatorv1client "github.com/openshift/client-go/operator/clientset/versioned"
 	operatorv1typed "github.com/openshift/client-go/operator/clientset/versioned/typed/operator/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/clientcmd"
+	"sigs.k8s.io/controller-runtime/pkg/client/config"
 )
 
 const (
-	// driverName is both the ClusterCSIDriver singleton's name and the
-	// storage.k8s.io/v1 CSIDriver object's name.
-	driverName = "secrets-store.csi.k8s.io"
-	// operatorNamespace is where the operator and its node DaemonSet run.
-	operatorNamespace = "openshift-cluster-csi-drivers"
-	// daemonSetName is the driver's node DaemonSet.
-	daemonSetName = "secrets-store-csi-driver-node"
-	// csiDriverContainer is the driver container within the DaemonSet.
-	csiDriverContainer = "csi-driver"
-	// azureWIFAudience is the audience Azure AD Workload Identity expects,
-	// matching upstream's azure.bats and the EP's own example.
-	azureWIFAudience = "api://AzureADTokenExchange"
-	// providerNamespace is where the Azure provider is installed, matching
-	// upstream azure.bats (PROVIDER_NAMESPACE=kube-system).
+	azureWIFAudience  = "api://AzureADTokenExchange"
 	providerNamespace = "kube-system"
-	// providerAppLabel selects the Azure provider's pods.
-	providerAppLabel = "csi-secrets-store-provider-azure"
+	providerAppLabel  = "csi-secrets-store-provider-azure"
 )
 
 var (
-	kubeClient             kubernetes.Interface
+	env                    *provider.Env
 	clusterCSIDriverClient operatorv1typed.ClusterCSIDriverInterface
 
 	resourceGroup string
@@ -73,16 +40,8 @@ var (
 	oidcIssuer    string
 	tenantID      string
 
-	// runSuffix disambiguates resource names across concurrent/repeated
-	// runs against the same Azure subscription, matching azure.bats's
-	// "$(openssl rand -hex 2)"-style suffixing.
 	runSuffix string
 
-	// originalDriverConfig is captured once in BeforeSuite and restored
-	// (best-effort) in AfterSuite. Restoration is expected to fail once
-	// tokenRequests.type has been transitioned to Managed by this suite's
-	// own specs, since that is a one-way transition -- see
-	// docs/testing-guidelines.md.
 	originalDriverConfig opv1.CSIDriverConfigSpec
 )
 
@@ -96,32 +55,31 @@ var _ = BeforeSuite(func() {
 		Skip("Azure WIF e2e not enabled (set RUN_AZURE_E2E=true)")
 	}
 
-	rand.Seed(time.Now().UnixNano())
-	runSuffix = fmt.Sprintf("%x", rand.Int31())[:6]
+	runSuffix = fmt.Sprintf("%06x", rand.Uint32())[:6]
 
 	Expect(azInit()).To(Succeed(), "unable to initialize Azure SDK credentials/clients")
 
-	restConfig, err := loadRestConfig()
+	restConfig, err := config.GetConfig()
 	Expect(err).NotTo(HaveOccurred(), "unable to load kubeconfig")
 
-	kubeClient, err = kubernetes.NewForConfig(restConfig)
-	Expect(err).NotTo(HaveOccurred(), "unable to build kube client")
+	env, err = provider.NewEnv(restConfig)
+	Expect(err).NotTo(HaveOccurred(), "unable to build provider e2e environment")
 
 	operatorClientset, err := operatorv1client.NewForConfig(restConfig)
 	Expect(err).NotTo(HaveOccurred(), "unable to build operator client")
 	clusterCSIDriverClient = operatorClientset.OperatorV1().ClusterCSIDrivers()
 
-	driver, err := clusterCSIDriverClient.Get(context.Background(), driverName, metav1.GetOptions{})
-	Expect(err).NotTo(HaveOccurred(), "ClusterCSIDriver %q must already exist -- deploy the operator before running this suite", driverName)
+	driver, err := clusterCSIDriverClient.Get(context.Background(), common.DriverName, metav1.GetOptions{})
+	Expect(err).NotTo(HaveOccurred(), "ClusterCSIDriver %q must already exist -- deploy the operator before running this suite", common.DriverName)
 	originalDriverConfig = *driver.Spec.DriverConfig.DeepCopy()
 
-	resourceGroup, err = ocGetResourceGroup()
+	resourceGroup, err = getAzureResourceGroup()
 	Expect(err).NotTo(HaveOccurred(), "unable to resolve the cluster's Azure resource group")
 
 	location, err = azResourceGroupLocation(resourceGroup)
 	Expect(err).NotTo(HaveOccurred(), "unable to resolve the resource group's location")
 
-	oidcIssuer, err = ocGetOIDCIssuer()
+	oidcIssuer, err = env.OIDCIssuer()
 	Expect(err).NotTo(HaveOccurred(), "unable to resolve the cluster's OIDC issuer")
 
 	tenantID, err = azTenantID()
@@ -134,16 +92,23 @@ var _ = AfterSuite(func() {
 	restoreDriverConfig()
 })
 
-// loadRestConfig builds a *rest.Config from $KUBECONFIG, falling back to
-// ~/.kube/config.
-func loadRestConfig() (*rest.Config, error) {
-	kubeconfig := os.Getenv("KUBECONFIG")
-	if kubeconfig == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return nil, fmt.Errorf("KUBECONFIG is not set and the home directory could not be determined: %w", err)
-		}
-		kubeconfig = filepath.Join(home, ".kube", "config")
+func getAzureResourceGroup() (string, error) {
+	if env.OpenShiftConfig == nil {
+		return "", fmt.Errorf("OpenShift config client is not available")
 	}
-	return clientcmd.BuildConfigFromFlags("", kubeconfig)
+	ctx, cancel := env.WithAPITimeout()
+	defer cancel()
+
+	infra, err := env.OpenShiftConfig.Infrastructures().Get(ctx, "cluster", metav1.GetOptions{})
+	if err != nil {
+		return "", fmt.Errorf("unable to get Infrastructure cluster: %w", err)
+	}
+	if infra.Status.PlatformStatus == nil || infra.Status.PlatformStatus.Azure == nil {
+		return "", fmt.Errorf("cluster Infrastructure has no Azure platform status")
+	}
+	rg := infra.Status.PlatformStatus.Azure.ResourceGroupName
+	if rg == "" {
+		return "", fmt.Errorf("cluster Infrastructure is missing Azure resourceGroupName")
+	}
+	return rg, nil
 }

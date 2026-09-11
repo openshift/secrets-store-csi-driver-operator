@@ -1,7 +1,6 @@
 package azure
 
 import (
-	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -9,9 +8,12 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
+
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
@@ -21,36 +23,12 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/msi/armmsi"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
 	"github.com/Azure/azure-sdk-for-go/sdk/security/keyvault/azsecrets"
+	opv1 "github.com/openshift/api/operator/v1"
+	"github.com/openshift/secrets-store-csi-driver-operator/test/e2e/common"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/utils/ptr"
 )
-
-// runCmd runs name with args, returning trimmed stdout. Both stdout and
-// stderr are captured; on failure, stderr is included in the returned error
-// for debuggability (matching how CI logs would otherwise show it). Used
-// only for the oc CLI -- all Azure resource CRUD below goes through
-// the Azure SDK for Go instead.
-func runCmd(name string, args ...string) (string, error) {
-	cmd := exec.Command(name, args...)
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		return "", fmt.Errorf("%s %s failed: %w: %s", name, strings.Join(args, " "), err, stderr.String())
-	}
-	return strings.TrimSpace(stdout.String()), nil
-}
-
-// runCmdStdin is runCmd, but pipes stdin (a manifest, etc.) to the command.
-func runCmdStdin(stdin string, name string, args ...string) (string, error) {
-	cmd := exec.Command(name, args...)
-	cmd.Stdin = strings.NewReader(stdin)
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		return "", fmt.Errorf("%s %s failed: %w: %s", name, strings.Join(args, " "), err, stderr.String())
-	}
-	return strings.TrimSpace(stdout.String()), nil
-}
 
 // servicePrincipal mirrors the subset of $CLUSTER_PROFILE_DIR/osServicePrincipal.json
 // fields needed to build an Azure SDK credential.
@@ -355,15 +333,103 @@ func ptrValue(p *string) string {
 	return *p
 }
 
-// ocGetResourceGroup resolves the cluster's Azure resource group, matching
-// azure.bats's `oc get infrastructure cluster` lookup.
-func ocGetResourceGroup() (string, error) {
-	return runCmd("oc", "get", "infrastructure", "cluster", "-o=jsonpath={.status.platformStatus.azure.resourceGroupName}")
+const (
+	azureProviderVersion        = "v1.8.2"
+	azureProviderServiceAccount = "csi-secrets-store-provider-azure"
+	azureProviderInstallerURL   = "https://github.com/Azure/secrets-store-csi-driver-provider-azure/releases/download/" + azureProviderVersion + "/provider-azure-installer.yaml"
+
+	rotationMinimumRefreshAge     = 30
+	rotationPollIntervalArgPrefix = "--rotation-poll-interval="
+)
+
+func installAzureProvider() error {
+	if err := env.ApplyManifestFromURL(azureProviderInstallerURL, providerNamespace); err != nil {
+		return err
+	}
+	return env.GrantPrivilegedSCC(providerNamespace, azureProviderServiceAccount)
 }
 
-// ocGetOIDCIssuer resolves the cluster's service account issuer (the OIDC
-// provider used for Workload Identity Federation trust), matching
-// azure.bats's `oc get authentication.config.openshift.io cluster` lookup.
-func ocGetOIDCIssuer() (string, error) {
-	return runCmd("oc", "get", "authentication.config.openshift.io", "cluster", "-o", "jsonpath={.spec.serviceAccountIssuer}")
+func uninstallAzureProvider() error {
+	return env.DeleteManifestFromURL(azureProviderInstallerURL, providerNamespace)
 }
+
+func waitAzureProviderReady() {
+	env.WaitProviderReady(providerNamespace, providerAppLabel)
+}
+
+func setSecretsStoreConfig(secretsStore opv1.SecretsStoreCSIDriverConfigSpec) {
+	patchDriverConfig(opv1.CSIDriverConfigSpec{
+		DriverType:   opv1.SecretsStoreDriverType,
+		SecretsStore: secretsStore,
+	})
+}
+
+func patchDriverConfig(driverConfig opv1.CSIDriverConfigSpec) {
+	var patch []byte
+	if driverConfig == (opv1.CSIDriverConfigSpec{}) {
+		patch = []byte(`{"spec":{"driverConfig":null}}`)
+	} else {
+		var err error
+		patch, err = json.Marshal(map[string]any{"spec": map[string]any{"driverConfig": driverConfig}})
+		Expect(err).NotTo(HaveOccurred(), "failed to build driverConfig merge patch")
+	}
+
+	Eventually(func() error {
+		_, err := clusterCSIDriverClient.Patch(context.Background(), common.DriverName, types.MergePatchType, patch, metav1.PatchOptions{})
+		return err
+	}, env.PollTimeout, env.PollInterval).Should(Succeed(), "failed to update ClusterCSIDriver %q driverConfig", common.DriverName)
+}
+
+func restoreDriverConfig() {
+	var patch []byte
+	if originalDriverConfig == (opv1.CSIDriverConfigSpec{}) {
+		patch = []byte(`{"spec":{"driverConfig":null}}`)
+	} else {
+		var err error
+		patch, err = json.Marshal(map[string]any{"spec": map[string]any{"driverConfig": originalDriverConfig}})
+		if err != nil {
+			GinkgoWriter.Printf("unable to build driverConfig merge patch for restore: %v\n", err)
+			return
+		}
+	}
+
+	if _, err := clusterCSIDriverClient.Patch(context.Background(), common.DriverName, types.MergePatchType, patch, metav1.PatchOptions{}); err != nil {
+		GinkgoWriter.Printf("unable to restore ClusterCSIDriver %q driverConfig (expected if tokenRequests.type was transitioned to Managed): %v\n", common.DriverName, err)
+	}
+}
+
+func rotateAndAssert(namespace, podName, keyVaultName, secretName string, currentValue *string) {
+	By("configuring a short secretRotation.minimumRefreshAge, preserving the Managed tokenRequests audience")
+	setSecretsStoreConfig(opv1.SecretsStoreCSIDriverConfigSpec{
+		SecretRotation: opv1.SecretsStoreSecretRotation{
+			Type: opv1.SecretRotationCustom,
+			Custom: opv1.CustomSecretRotation{
+				MinimumRefreshAge: rotationMinimumRefreshAge,
+			},
+		},
+		TokenRequests: opv1.SecretsStoreTokenRequests{
+			Type: opv1.TokenRequestsManaged,
+			Managed: opv1.ManagedTokenRequests{
+				Audiences: &[]opv1.SecretsStoreTokenRequest{
+					{Audience: ptr.To(azureWIFAudience)},
+				},
+			},
+		},
+	})
+
+	pollIntervalArg, err := env.DaemonSetArgValue(rotationPollIntervalArgPrefix)
+	Expect(err).NotTo(HaveOccurred())
+	GinkgoWriter.Printf("DaemonSet %s=%s\n", rotationPollIntervalArgPrefix, pollIntervalArg)
+	env.WaitForDaemonSetRollout()
+
+	By("updating the real Key Vault secret's value")
+	newValue := *currentValue + "-rotated"
+	Expect(azKeyVaultSecretSet(keyVaultName, secretName, newValue)).To(Succeed())
+	*currentValue = newValue
+
+	By("waiting for the mounted file to reflect the new Key Vault secret value")
+	Eventually(func() (string, error) {
+		return readMountedSecret(namespace, podName, secretName)
+	}, 5*time.Minute, 5*time.Second).Should(Equal(newValue), "mounted secret did not rotate to the new Key Vault value within the expected window")
+}
+

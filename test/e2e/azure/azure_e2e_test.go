@@ -1,7 +1,6 @@
 package azure
 
 import (
-	"context"
 	"fmt"
 	"time"
 
@@ -9,7 +8,6 @@ import (
 	. "github.com/onsi/gomega"
 
 	opv1 "github.com/openshift/api/operator/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/ptr"
 )
 
@@ -55,7 +53,7 @@ var _ = Describe("Azure provider e2e", Ordered, func() {
 
 		By("creating privileged test namespaces")
 		for _, ns := range []string{mainNamespace, testNS, negativeTestNS} {
-			Expect(createPrivilegedNamespace(ns)).To(Succeed())
+			Expect(env.CreatePrivilegedNamespace(ns)).To(Succeed())
 		}
 
 		By("creating a Key Vault and secret")
@@ -95,14 +93,14 @@ var _ = Describe("Azure provider e2e", Ordered, func() {
 				},
 			},
 		})
-		waitForTokenRequestAudiences(azureWIFAudience)
-		waitForDaemonSetRollout()
+		env.WaitForTokenRequestAudiences(azureWIFAudience)
+		env.WaitForDaemonSetRollout()
 	})
 
 	AfterAll(func() {
 		By("tearing down Azure e2e fixtures")
 		for _, ns := range []string{mainNamespace, testNS, negativeTestNS} {
-			if err := deleteNamespace(ns); err != nil {
+			if err := env.DeleteNamespace(ns); err != nil {
 				GinkgoWriter.Printf("unable to delete namespace %q: %v\n", ns, err)
 			}
 		}
@@ -119,31 +117,25 @@ var _ = Describe("Azure provider e2e", Ordered, func() {
 
 	It("deploys an azure SecretProviderClass", func() {
 		Expect(deploySecretProviderClass(mainNamespace, spcAzure, clientID, keyVaultName, tenantID, batsSecretName)).To(Succeed())
-		out, err := runCmd("oc", "get", "secretproviderclass", spcAzure, "-n", mainNamespace, "-o", "yaml")
+		providerName, err := env.SecretProviderClassProvider(mainNamespace, spcAzure)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(out).To(ContainSubstring("azure"))
+		Expect(providerName).To(Equal("azure"))
 	})
 
 	It("creates an inline CSI volume pod", func() {
 		Expect(createBatsInlinePod(mainNamespace, inlinePodName, spcAzure)).To(Succeed())
-		Eventually(func() (bool, error) {
-			pod, err := kubeClient.CoreV1().Pods(mainNamespace).Get(context.Background(), inlinePodName, metav1.GetOptions{})
-			if err != nil {
-				return false, err
-			}
-			return isPodReady(pod), nil
-		}, 5*time.Minute, pollInterval).Should(BeTrue(), "pod %s/%s did not become Ready", mainNamespace, inlinePodName)
+		env.WaitPodReady(mainNamespace, inlinePodName)
 	})
 
 	It("reads the Azure Key Vault secret from the inline volume pod", func() {
 		Eventually(func() (string, error) {
 			return readMountedSecret(mainNamespace, inlinePodName, batsSecretName)
-		}, pollTimeout, pollInterval).Should(Equal(batsSecretValue))
+		}, env.PollTimeout, env.PollInterval).Should(Equal(batsSecretValue))
 	})
 
 	It("deletes the inline volume pod cleanly", func() {
-		Expect(deletePod(mainNamespace, inlinePodName)).To(Succeed())
-		waitForPodDeleted(mainNamespace, inlinePodName)
+		Expect(env.DeletePod(mainNamespace, inlinePodName)).To(Succeed())
+		env.WaitForPodDeleted(mainNamespace, inlinePodName)
 	})
 
 	Context("sync with Kubernetes secrets", func() {
@@ -151,42 +143,42 @@ var _ = Describe("Azure provider e2e", Ordered, func() {
 			Expect(deploySyncSecretProviderClass(mainNamespace, spcAzureSync, clientID, keyVaultName, tenantID, batsSecretName, syncLabelValue)).To(Succeed())
 			Expect(deploySyncDeployment(mainNamespace, deploymentOne, spcAzureSync)).To(Succeed())
 			Expect(deploySyncDeployment(mainNamespace, deploymentTwo, spcAzureSync)).To(Succeed())
-			waitForLabeledPodsReady(mainNamespace, "busybox", 90*time.Second)
+			env.WaitForLabeledPodsReady(mainNamespace, "busybox", 90*time.Second)
 		})
 
 		It("reads mounted content, synced secrets, env vars, and owner references", func() {
-			podName, err := podNameByLabel(mainNamespace, "busybox")
+			podName, err := env.PodNameByLabel(mainNamespace, "busybox")
 			Expect(err).NotTo(HaveOccurred())
 
-			got, err := readMountedFile(mainNamespace, podName, "/mnt/secrets-store/secretalias")
+			got, err := env.ReadMountedFile(mainNamespace, podName, "/mnt/secrets-store/secretalias")
 			Expect(err).NotTo(HaveOccurred())
 			Expect(got).To(Equal(batsSecretValue))
 
-			username, err := getSecretKey(mainNamespace, "foosecret", "username")
+			username, err := env.GetSecretKey(mainNamespace, "foosecret", "username")
 			Expect(err).NotTo(HaveOccurred())
 			Expect(username).To(Equal(batsSecretValue))
 
-			envVal, err := podEnvValue(mainNamespace, podName, "SECRET_USERNAME")
+			envVal, err := env.PodEnvValue(mainNamespace, podName, "SECRET_USERNAME")
 			Expect(err).NotTo(HaveOccurred())
 			Expect(envVal).To(Equal(batsSecretValue))
 
-			label, err := getSecretLabel(mainNamespace, "foosecret", "environment")
+			label, err := env.GetSecretLabel(mainNamespace, "foosecret", "environment")
 			Expect(err).NotTo(HaveOccurred())
 			Expect(label).To(Equal(syncLabelValue))
 
-			managed, err := getSecretLabel(mainNamespace, "foosecret", "secrets-store.csi.k8s.io/managed")
+			managed, err := env.GetSecretLabel(mainNamespace, "foosecret", "secrets-store.csi.k8s.io/managed")
 			Expect(err).NotTo(HaveOccurred())
 			Expect(managed).To(Equal("true"))
 
-			waitForSecretOwnerCount(mainNamespace, "foosecret", 2)
+			env.WaitForSecretOwnerCount(mainNamespace, "foosecret", 2)
 		})
 
 		It("deletes one deployment, then both, and cleans up the synced secret", func() {
-			Expect(deleteDeployment(mainNamespace, deploymentOne)).To(Succeed())
-			waitForSecretOwnerCount(mainNamespace, "foosecret", 1)
+			Expect(env.DeleteDeployment(mainNamespace, deploymentOne)).To(Succeed())
+			env.WaitForSecretOwnerCount(mainNamespace, "foosecret", 1)
 
-			Expect(deleteDeployment(mainNamespace, deploymentTwo)).To(Succeed())
-			waitForSecretDeleted(mainNamespace, "foosecret")
+			Expect(env.DeleteDeployment(mainNamespace, deploymentTwo)).To(Succeed())
+			env.WaitForSecretDeleted(mainNamespace, "foosecret")
 		})
 	})
 
@@ -194,31 +186,31 @@ var _ = Describe("Azure provider e2e", Ordered, func() {
 		It("deploys cluster- and namespace-scoped SPCs and a busybox deployment in test-ns", func() {
 			Expect(deployNamespacedSecretProviderClasses(mainNamespace, testNS, clientID, keyVaultName, tenantID, batsSecretName)).To(Succeed())
 			Expect(deploySyncDeployment(testNS, deploymentOne, spcAzureSync)).To(Succeed())
-			waitForLabeledPodsReady(testNS, "busybox", 60*time.Second)
+			env.WaitForLabeledPodsReady(testNS, "busybox", 60*time.Second)
 		})
 
 		It("reads mounted content, synced secrets, env vars, and owner references in test-ns", func() {
-			podName, err := podNameByLabel(testNS, "busybox")
+			podName, err := env.PodNameByLabel(testNS, "busybox")
 			Expect(err).NotTo(HaveOccurred())
 
-			got, err := readMountedFile(testNS, podName, "/mnt/secrets-store/secretalias")
+			got, err := env.ReadMountedFile(testNS, podName, "/mnt/secrets-store/secretalias")
 			Expect(err).NotTo(HaveOccurred())
 			Expect(got).To(Equal(batsSecretValue))
 
-			username, err := getSecretKey(testNS, "foosecret", "username")
+			username, err := env.GetSecretKey(testNS, "foosecret", "username")
 			Expect(err).NotTo(HaveOccurred())
 			Expect(username).To(Equal(batsSecretValue))
 
-			envVal, err := podEnvValue(testNS, podName, "SECRET_USERNAME")
+			envVal, err := env.PodEnvValue(testNS, podName, "SECRET_USERNAME")
 			Expect(err).NotTo(HaveOccurred())
 			Expect(envVal).To(Equal(batsSecretValue))
 
-			waitForSecretOwnerCount(testNS, "foosecret", 1)
+			env.WaitForSecretOwnerCount(testNS, "foosecret", 1)
 		})
 
 		It("deletes the deployment and synced secret in test-ns", func() {
-			Expect(deleteDeployment(testNS, deploymentOne)).To(Succeed())
-			waitForSecretDeleted(testNS, "foosecret")
+			Expect(env.DeleteDeployment(testNS, deploymentOne)).To(Succeed())
+			env.WaitForSecretDeleted(testNS, "foosecret")
 		})
 	})
 
@@ -228,11 +220,11 @@ var _ = Describe("Azure provider e2e", Ordered, func() {
 			var podName string
 			Eventually(func() error {
 				var err error
-				podName, err = podNameByLabel(negativeTestNS, "busybox")
+				podName, err = env.PodNameByLabel(negativeTestNS, "busybox")
 				return err
-			}, pollTimeout, pollInterval).Should(Succeed())
-			waitForPodMountFailure(negativeTestNS, podName, fmt.Sprintf("failed to get secretproviderclass %s/%s", negativeTestNS, spcAzureSync))
-			Expect(deleteDeployment(negativeTestNS, deploymentOne)).To(Succeed())
+			}, env.PollTimeout, env.PollInterval).Should(Succeed())
+			env.WaitForPodMountFailure(negativeTestNS, podName, fmt.Sprintf("failed to get secretproviderclass %s/%s", negativeTestNS, spcAzureSync))
+			Expect(env.DeleteDeployment(negativeTestNS, deploymentOne)).To(Succeed())
 		})
 	})
 
@@ -240,33 +232,33 @@ var _ = Describe("Azure provider e2e", Ordered, func() {
 		It("deploys multiple SecretProviderClasses", func() {
 			Expect(deployMultipleSecretProviderClasses(mainNamespace, clientID, keyVaultName, tenantID, batsSecretName)).To(Succeed())
 			for _, name := range []string{"azure-spc-0", "azure-spc-1"} {
-				out, err := runCmd("oc", "get", "secretproviderclass", name, "-n", mainNamespace, "-o", "yaml")
+				providerName, err := env.SecretProviderClassProvider(mainNamespace, name)
 				Expect(err).NotTo(HaveOccurred())
-				Expect(out).To(ContainSubstring(name))
+				Expect(providerName).To(Equal("azure"))
 			}
 		})
 
 		It("creates a pod mounting multiple SecretProviderClasses", func() {
 			Expect(createMultipleSPCPod(mainNamespace, multiplePodName)).To(Succeed())
-			waitPodReady(mainNamespace, multiplePodName)
+			env.WaitPodReady(mainNamespace, multiplePodName)
 		})
 
 		It("reads mounted content, synced secrets, and env vars from both volumes", func() {
 			for _, mount := range []string{"/mnt/secrets-store-0/secretalias", "/mnt/secrets-store-1/secretalias"} {
-				got, err := readMountedFile(mainNamespace, multiplePodName, mount)
+				got, err := env.ReadMountedFile(mainNamespace, multiplePodName, mount)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(got).To(Equal(batsSecretValue))
 			}
 
 			for _, secretName := range []string{"foosecret-0", "foosecret-1"} {
-				username, err := getSecretKey(mainNamespace, secretName, "username")
+				username, err := env.GetSecretKey(mainNamespace, secretName, "username")
 				Expect(err).NotTo(HaveOccurred())
 				Expect(username).To(Equal(batsSecretValue))
-				waitForSecretOwnerCount(mainNamespace, secretName, 1)
+				env.WaitForSecretOwnerCount(mainNamespace, secretName, 1)
 			}
 
 			for _, envName := range []string{"SECRET_USERNAME_0", "SECRET_USERNAME_1"} {
-				envVal, err := podEnvValue(mainNamespace, multiplePodName, envName)
+				envVal, err := env.PodEnvValue(mainNamespace, multiplePodName, envName)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(envVal).To(Equal(batsSecretValue))
 			}
@@ -278,7 +270,7 @@ var _ = Describe("Azure provider e2e", Ordered, func() {
 			By("deploying a pod for the rotation assertion")
 			Expect(deploySecretProviderClass(mainNamespace, spcAzure, clientID, keyVaultName, tenantID, batsSecretName)).To(Succeed())
 			Expect(createInlineVolumePod(mainNamespace, rotationPodName, spcAzure)).To(Succeed())
-			waitPodReady(mainNamespace, rotationPodName)
+			env.WaitPodReady(mainNamespace, rotationPodName)
 			got, err := readMountedSecret(mainNamespace, rotationPodName, batsSecretName)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(got).To(Equal(rotationSecretVal))
