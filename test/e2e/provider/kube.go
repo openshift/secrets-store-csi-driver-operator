@@ -354,6 +354,9 @@ func (e *Env) DeleteDeployment(namespace, name string) error {
 
 // ExecInPod runs command in the named container and returns trimmed stdout.
 func (e *Env) ExecInPod(namespace, podName, container string, command []string) (string, error) {
+	ctx, cancel := e.WithAPITimeout()
+	defer cancel()
+
 	req := e.Kube.CoreV1().RESTClient().Post().
 		Resource("pods").
 		Name(podName).
@@ -372,7 +375,7 @@ func (e *Env) ExecInPod(namespace, podName, container string, command []string) 
 	}
 
 	var stdout, stderr bytes.Buffer
-	err = executor.Stream(remotecommand.StreamOptions{
+	err = executor.StreamWithContext(ctx, remotecommand.StreamOptions{
 		Stdout: &stdout,
 		Stderr: &stderr,
 	})

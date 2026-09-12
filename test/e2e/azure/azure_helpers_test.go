@@ -318,6 +318,7 @@ const (
 	azureProviderInstallerURL   = "https://github.com/Azure/secrets-store-csi-driver-provider-azure/releases/download/" + azureProviderVersion + "/provider-azure-installer.yaml"
 
 	rotationMinimumRefreshAge     = 30
+	rotationExpectedPollInterval  = "30s"
 	rotationPollIntervalArgPrefix = "--rotation-poll-interval="
 )
 
@@ -343,36 +344,43 @@ func setSecretsStoreConfig(secretsStore opv1.SecretsStoreCSIDriverConfigSpec) {
 	})
 }
 
-func patchDriverConfig(driverConfig opv1.CSIDriverConfigSpec) {
-	var patch []byte
-	if driverConfig == (opv1.CSIDriverConfigSpec{}) {
-		patch = []byte(`{"spec":{"driverConfig":null}}`)
-	} else {
-		var err error
-		patch, err = json.Marshal(map[string]any{"spec": map[string]any{"driverConfig": driverConfig}})
-		Expect(err).NotTo(HaveOccurred(), "failed to build driverConfig merge patch")
+// driverConfigJSONPatch builds a JSON Patch (RFC 6902) document that replaces
+// spec.driverConfig wholesale, clearing nested fields omitted from want.
+func driverConfigJSONPatch(want opv1.CSIDriverConfigSpec) ([]byte, error) {
+	if want == (opv1.CSIDriverConfigSpec{}) {
+		return []byte(`[{"op":"remove","path":"/spec/driverConfig"}]`), nil
 	}
+	value, err := json.Marshal(want)
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal([]map[string]any{
+		{"op": "add", "path": "/spec/driverConfig", "value": json.RawMessage(value)},
+	})
+}
+
+func patchDriverConfig(driverConfig opv1.CSIDriverConfigSpec) {
+	patch, err := driverConfigJSONPatch(driverConfig)
+	Expect(err).NotTo(HaveOccurred(), "failed to build driverConfig JSON patch")
 
 	Eventually(func() error {
-		_, err := env.ClusterCSIDriver.Patch(context.Background(), common.DriverName, types.MergePatchType, patch, metav1.PatchOptions{})
+		ctx, cancel := env.WithAPITimeout()
+		defer cancel()
+		_, err := env.ClusterCSIDriver.Patch(ctx, common.DriverName, types.JSONPatchType, patch, metav1.PatchOptions{})
 		return err
 	}, common.PollTimeout, common.PollInterval).Should(Succeed(), "failed to update ClusterCSIDriver %q driverConfig", common.DriverName)
 }
 
 func restoreDriverConfig() {
-	var patch []byte
-	if originalDriverConfig == (opv1.CSIDriverConfigSpec{}) {
-		patch = []byte(`{"spec":{"driverConfig":null}}`)
-	} else {
-		var err error
-		patch, err = json.Marshal(map[string]any{"spec": map[string]any{"driverConfig": originalDriverConfig}})
-		if err != nil {
-			GinkgoWriter.Printf("unable to build driverConfig merge patch for restore: %v\n", err)
-			return
-		}
+	patch, err := driverConfigJSONPatch(originalDriverConfig)
+	if err != nil {
+		GinkgoWriter.Printf("unable to build driverConfig JSON patch for restore: %v\n", err)
+		return
 	}
 
-	if _, err := env.ClusterCSIDriver.Patch(context.Background(), common.DriverName, types.MergePatchType, patch, metav1.PatchOptions{}); err != nil {
+	ctx, cancel := env.WithAPITimeout()
+	defer cancel()
+	if _, err := env.ClusterCSIDriver.Patch(ctx, common.DriverName, types.JSONPatchType, patch, metav1.PatchOptions{}); err != nil {
 		GinkgoWriter.Printf("unable to restore ClusterCSIDriver %q driverConfig (expected if tokenRequests.type was transitioned to Managed): %v\n", common.DriverName, err)
 	}
 }
@@ -396,9 +404,11 @@ func rotateAndAssert(namespace, podName, keyVaultName, secretName string, curren
 		},
 	})
 
-	pollIntervalArg, err := env.DaemonSetArgValue(rotationPollIntervalArgPrefix)
-	Expect(err).NotTo(HaveOccurred())
-	GinkgoWriter.Printf("DaemonSet %s=%s\n", rotationPollIntervalArgPrefix, pollIntervalArg)
+	Eventually(func() (string, error) {
+		return env.DaemonSetArgValue(rotationPollIntervalArgPrefix)
+	}, common.PollTimeout, common.PollInterval).Should(Equal(rotationExpectedPollInterval),
+		"DaemonSet did not receive %s%s", rotationPollIntervalArgPrefix, rotationExpectedPollInterval)
+	GinkgoWriter.Printf("DaemonSet %s=%s\n", rotationPollIntervalArgPrefix, rotationExpectedPollInterval)
 	env.WaitForDaemonSetRollout()
 
 	By("updating the real Key Vault secret's value")
