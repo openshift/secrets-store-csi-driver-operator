@@ -152,7 +152,9 @@ collect() {
 
         if [[ -n "${CODECOV_TOKEN:-}" ]]; then
             echo "Uploading to Codecov..."
-            local codecov_bin="${artifact_dir}/codecov"
+            local codecov_dir
+            codecov_dir=$(mktemp -d)
+            local codecov_bin="${codecov_dir}/codecov"
             curl -sS -o "${codecov_bin}"              https://uploader.codecov.io/latest/linux/codecov
             curl -sS -o "${codecov_bin}.SHA256SUM"    https://uploader.codecov.io/latest/linux/codecov.SHA256SUM
             curl -sS -o "${codecov_bin}.SHA256SUM.sig" https://uploader.codecov.io/latest/linux/codecov.SHA256SUM.sig
@@ -174,6 +176,7 @@ collect() {
                 --flags=e2e
                 --name="E2E Coverage"
                 --verbose
+                -X search
             )
 
             local job_type="${JOB_TYPE:-local}"
@@ -198,7 +201,7 @@ collect() {
             fi
 
             "${codecov_bin}" "${codecov_args[@]}" || echo "Warning: Codecov upload failed (non-fatal)"
-            rm -f "${codecov_bin}" "${codecov_bin}.SHA256SUM" "${codecov_bin}.SHA256SUM.sig"
+            rm -rf "${codecov_dir}"
         else
             echo "CODECOV_TOKEN not set -- skipping Codecov upload."
             echo "Coverage profile saved as artifact: ${coverage_profile}"
