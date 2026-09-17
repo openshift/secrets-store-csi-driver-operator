@@ -18,6 +18,26 @@ DEPLOYMENT="secrets-store-csi-driver-operator"
 POD_LABEL="app=secrets-store-csi-driver-operator"
 GOCOVERDIR_PATH="/tmp/e2e-cover"
 CODECOV_SECRET_PATH="/var/run/secrets/codecov/CODECOV_TOKEN"
+CODECOV_API_BASE="https://api.codecov.io/api/v2/github/openshift/repos/secrets-store-csi-driver-operator"
+
+resolve_coverage_sha() {
+    local job_type="${JOB_TYPE:-local}"
+    local sha=""
+
+    if [[ "${job_type}" == "presubmit" && -n "${PULL_PULL_SHA:-}" ]]; then
+        sha="${PULL_PULL_SHA}"
+    elif [[ "${job_type}" == "postsubmit" && -n "${PULL_BASE_SHA:-}" ]]; then
+        sha="${PULL_BASE_SHA}"
+    elif [[ "${job_type}" == "periodic" && -n "${JOB_SPEC:-}" ]]; then
+        sha=$(echo "${JOB_SPEC}" | jq -r '.extra_refs[] | select(.repo=="secrets-store-csi-driver-operator") | .base_sha // empty' | head -1)
+    fi
+
+    if [[ -z "${sha}" ]]; then
+        sha=$(git rev-parse HEAD)
+    fi
+
+    echo "${sha}"
+}
 
 setup() {
     echo "--- E2E Coverage Setup ---"
@@ -170,9 +190,9 @@ collect() {
                 [[ -n "${REPO_OWNER:-}" && -n "${REPO_NAME:-}" ]] && codecov_args+=(--slug "${REPO_OWNER}/${REPO_NAME}")
             elif [[ "${job_type}" == "periodic" ]]; then
                 local sha
-                sha=$(git rev-parse HEAD)
+                sha=$(resolve_coverage_sha)
                 echo "Detected periodic (sha ${sha})"
-                codecov_args+=(--sha "${sha}" --branch "main")
+                codecov_args+=(--sha "${sha}" --branch "main" --slug "openshift/secrets-store-csi-driver-operator")
             else
                 echo "Local run -- no Prow context, Codecov will auto-detect from git"
             fi
@@ -195,11 +215,13 @@ collect() {
 check_freshness() {
     echo "--- Coverage Freshness Check ---"
 
-    local head_sha
-    head_sha=$(git rev-parse HEAD)
-    echo "Current HEAD: ${head_sha}"
+    local target_sha
+    target_sha=$(resolve_coverage_sha)
+    echo "Target commit: ${target_sha}"
 
-    local api_url="https://api.codecov.io/api/v2/github/openshift/repos/secrets-store-csi-driver-operator/commits?branch=main&page_size=1"
+    # Check e2e-flagged coverage for this exact commit. The branch listing API
+    # can return a different SHA than the one we upload/check in periodic jobs.
+    local api_url="${CODECOV_API_BASE}/totals/?sha=${target_sha}&flag=e2e"
 
     local response http_code body
     response=$(curl -sS -w "\n%{http_code}" "${api_url}") || {
@@ -210,25 +232,27 @@ check_freshness() {
     http_code=$(echo "${response}" | tail -1)
     body=$(echo "${response}" | sed '$d')
 
+    if [[ "${http_code}" == "404" ]]; then
+        echo "No e2e coverage found for ${target_sha}. Proceeding with coverage run."
+        exit 0
+    fi
+
     if [[ "${http_code}" != "200" ]]; then
         echo "Error: Codecov API returned HTTP ${http_code}. Aborting."
         exit 1
     fi
 
-    local last_covered_sha
-    last_covered_sha=$(echo "${body}" | jq -r '.results[0].commitid // empty')
-
-    if [[ -z "${last_covered_sha}" ]]; then
-        echo "No coverage data found on Codecov yet (first run?). Proceeding with coverage run."
-        exit 0
-    fi
-
-    if [[ "${head_sha}" == "${last_covered_sha}" ]]; then
-        echo "[SKIP] Coverage already current for ${head_sha}, nothing to do."
+    local coverage_pct
+    coverage_pct=$(echo "${body}" | jq -r '.totals.coverage // empty')
+    if [[ -n "${coverage_pct}" ]]; then
+        echo "[SKIP] E2E coverage already published for ${target_sha} (${coverage_pct}%). Skipping cluster provisioning."
+        # Exit non-zero so ci-operator aborts remaining pre/test steps without
+        # provisioning a cluster. The periodic job will show as failed, which is
+        # expected for a resource-saving early exit.
         exit 1
     fi
 
-    echo "Coverage stale: last=${last_covered_sha}, current=${head_sha}. Proceeding with e2e."
+    echo "Codecov has ${target_sha} but no e2e coverage totals. Proceeding with e2e."
     exit 0
 }
 
