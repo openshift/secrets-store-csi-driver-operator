@@ -152,8 +152,16 @@ collect() {
 
         if [[ -n "${CODECOV_TOKEN:-}" ]]; then
             echo "Uploading to Codecov..."
-            local codecov_dir
+            local codecov_dir upload_dir git_root
             codecov_dir=$(mktemp -d)
+            upload_dir=$(mktemp -d)
+            git_root=$(git rev-parse --show-toplevel)
+
+            # Upload only the converted profile. The uploader auto-discovers other
+            # coverage-like files in ARTIFACT_DIR / the git tree (e.g. coverage.out,
+            # raw covdata), which triggers "Too many files" on the Codecov backend.
+            cp "${coverage_profile}" "${upload_dir}/coverage-e2e.out"
+
             local codecov_bin="${codecov_dir}/codecov"
             curl -sS -o "${codecov_bin}"              https://uploader.codecov.io/latest/linux/codecov
             curl -sS -o "${codecov_bin}.SHA256SUM"    https://uploader.codecov.io/latest/linux/codecov.SHA256SUM
@@ -172,7 +180,9 @@ collect() {
             chmod +x "${codecov_bin}"
 
             local -a codecov_args=(
-                --file="${coverage_profile}"
+                upload-coverage
+                --file="${upload_dir}/coverage-e2e.out"
+                --rootDir="${git_root}"
                 --flags=e2e
                 --name="E2E Coverage"
                 --verbose
@@ -201,7 +211,7 @@ collect() {
             fi
 
             "${codecov_bin}" "${codecov_args[@]}" || echo "Warning: Codecov upload failed (non-fatal)"
-            rm -rf "${codecov_dir}"
+            rm -rf "${codecov_dir}" "${upload_dir}"
         else
             echo "CODECOV_TOKEN not set -- skipping Codecov upload."
             echo "Coverage profile saved as artifact: ${coverage_profile}"
