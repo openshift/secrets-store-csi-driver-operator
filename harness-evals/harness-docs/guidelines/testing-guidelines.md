@@ -10,7 +10,7 @@
 
 - Place unit tests in `_test.go` files alongside the code they test in the same package.
 - The main test file is `pkg/operator/starter_test.go` — match this pattern for new packages.
-- E2E tests are invoked via `hack/e2e.sh`.
+- E2E tests are invoked via `hack/e2e.sh` and the Ginkgo suites under `test/e2e/` and `test/e2e/azure/` (see "Ginkgo E2E Suites" below).
 
 ## Fakes and Mocks
 
@@ -33,18 +33,25 @@
 ## Makefile Test Targets
 
 - `make test-unit` — runs unit tests via `go test`.
-- `make test-e2e` — runs end-to-end tests via `hack/e2e.sh`.
+- `make test-e2e` — runs `hack/e2e.sh`, then the Ginkgo suite in `test/e2e`. Pass `RUN_AZURE_E2E=true` to also run `test/e2e/azure` (operator-e2e-azure CI job).
 - `make verify` — runs code verification (formatting, vetting, Go version checks).
 - `make test` — runs `test-unit` (the default test target).
 - Run `make verify` before submitting changes to catch formatting and vet issues.
 
 ## E2E Testing
 
-- E2E tests require a running OpenShift cluster and are executed via `hack/e2e.sh`.
-- The e2e script handles test setup, execution, and teardown including artifact collection.
-- The e2e script creates an ephemeral namespace (`secrets-store-test-ns-<random>`) and cleans it up via `test_teardown`.
-- E2E tests validate: CSIDriver resource existence, provider pod readiness, SecretProviderClass creation, and secret volume mounting.
+- E2E tests require a running OpenShift cluster with the operator and driver already deployed, and are executed via `hack/e2e.sh` plus the Ginkgo suites below.
+- `hack/e2e.sh` handles its own test setup, execution, and teardown including artifact collection. It creates an ephemeral namespace (`secrets-store-test-ns-<random>`) and cleans it up via `test_teardown`. It validates: CSIDriver resource existence, provider pod readiness, SecretProviderClass creation, and secret volume mounting.
 - E2E tests are run in CI via Prow jobs — they are not expected to run locally in most development workflows.
+
+### Ginkgo E2E Suites
+
+Two Ginkgo v2 + Gomega suites cover the configurable secret rotation and workload identity federation (WIF) feature (`driverConfig.secretsStore`):
+
+- **`test/e2e`** — cloud-agnostic rotation and `tokenRequests` coverage against the live `CSIDriver` and node DaemonSet.
+- **`test/e2e/azure`** — real Azure WIF suite (port of upstream `azure.bats`); runs only when `RUN_AZURE_E2E=true` against a WIF-enabled cluster with `$CLUSTER_PROFILE_DIR/osServicePrincipal.json`. Workloads and `SecretProviderClass` objects are created via client-go; Azure resources use the Azure SDK for Go (no `oc` or `az` CLI).
+
+**`tokenRequests.type: Managed` is a one-way transition** on `ClusterCSIDriver`. Plain `make test-e2e` runs the irreversible `Managed` specs by default (`RUN_IRREVERSIBLE_E2E` defaults to `true`); set `RUN_IRREVERSIBLE_E2E=false` on a persistent dev cluster. The `test/e2e/azure` suite also sets `Managed` when enabled; its CI job uses an ephemeral cluster.
 
 ## Code Verification
 

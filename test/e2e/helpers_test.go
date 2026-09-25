@@ -6,28 +6,21 @@ import (
 	"fmt"
 	"sort"
 	"strings"
-	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
 	opv1 "github.com/openshift/api/operator/v1"
+	"github.com/openshift/secrets-store-csi-driver-operator/test/e2e/common"
 	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 )
 
-const (
-	pollInterval = 2 * time.Second
-	pollTimeout  = 5 * time.Minute
-	// apiCallTimeout bounds every individual API request this suite makes
-	apiCallTimeout = 30 * time.Second
-)
-
-// withAPITimeout returns a context bounded by apiCallTimeout. Callers must
+// withAPITimeout returns a context bounded by common.APICallTimeout. Callers must
 // defer the returned cancel func.
 func withAPITimeout() (context.Context, context.CancelFunc) {
-	return context.WithTimeout(context.Background(), apiCallTimeout)
+	return context.WithTimeout(context.Background(), common.APICallTimeout)
 }
 
 // setSecretsStoreConfig patches the ClusterCSIDriver's driverConfig to
@@ -62,8 +55,8 @@ func clearDriverConfig() {
 func setSecretsStoreField(mutate func(*opv1.SecretsStoreCSIDriverConfigSpec)) {
 	ctx, cancel := withAPITimeout()
 	defer cancel()
-	driver, err := clusterCSIDriverClient.Get(ctx, driverName, metav1.GetOptions{})
-	Expect(err).NotTo(HaveOccurred(), "failed to get ClusterCSIDriver %q", driverName)
+	driver, err := clusterCSIDriverClient.Get(ctx, common.DriverName, metav1.GetOptions{})
+	Expect(err).NotTo(HaveOccurred(), "failed to get ClusterCSIDriver %q", common.DriverName)
 
 	secretsStore := driver.Spec.DriverConfig.SecretsStore
 	mutate(&secretsStore)
@@ -122,14 +115,14 @@ func setTokenRequests(want opv1.SecretsStoreTokenRequests) {
 // atomically, which correctly clears sibling fields that aren't part of
 // want.
 func setDriverConfig(want opv1.CSIDriverConfigSpec) {
-	By(fmt.Sprintf("setting ClusterCSIDriver %q driverConfig to %+v", driverName, want))
+	By(fmt.Sprintf("setting ClusterCSIDriver %q driverConfig to %+v", common.DriverName, want))
 
 	attempt := 0
 	Eventually(func() error {
 		attempt++
 		ctx, cancel := withAPITimeout()
 		defer cancel()
-		driver, err := clusterCSIDriverClient.Get(ctx, driverName, metav1.GetOptions{})
+		driver, err := clusterCSIDriverClient.Get(ctx, common.DriverName, metav1.GetOptions{})
 		if err != nil {
 			GinkgoWriter.Printf("[setDriverConfig attempt %d] get failed: %v\n", attempt, err)
 			return err
@@ -144,12 +137,12 @@ func setDriverConfig(want opv1.CSIDriverConfigSpec) {
 		}
 		ctx2, cancel2 := withAPITimeout()
 		defer cancel2()
-		_, err = clusterCSIDriverClient.Patch(ctx2, driverName, types.JSONPatchType, patch, metav1.PatchOptions{})
+		_, err = clusterCSIDriverClient.Patch(ctx2, common.DriverName, types.JSONPatchType, patch, metav1.PatchOptions{})
 		if err != nil {
 			GinkgoWriter.Printf("[setDriverConfig attempt %d] patch failed: %v\n", attempt, err)
 		}
 		return err
-	}, pollTimeout, pollInterval).Should(Succeed(), "failed to update ClusterCSIDriver %q driverConfig", driverName)
+	}, common.PollTimeout, common.PollInterval).Should(Succeed(), "failed to update ClusterCSIDriver %q driverConfig", common.DriverName)
 }
 
 // driverConfigJSONPatch builds a JSON Patch (RFC 6902) document that
@@ -173,20 +166,20 @@ func driverConfigJSONPatch(want opv1.CSIDriverConfigSpec) ([]byte, error) {
 // waitForRequiresRepublish polls the live CSIDriver object until
 // spec.requiresRepublish equals want.
 func waitForRequiresRepublish(want bool) {
-	By(fmt.Sprintf("waiting for CSIDriver %q requiresRepublish to converge to %t", driverName, want))
+	By(fmt.Sprintf("waiting for CSIDriver %q requiresRepublish to converge to %t", common.DriverName, want))
 	attempt := 0
 	Eventually(func() (bool, error) {
 		attempt++
 		ctx, cancel := withAPITimeout()
 		defer cancel()
-		driver, err := kubeClient.StorageV1().CSIDrivers().Get(ctx, driverName, metav1.GetOptions{})
+		driver, err := kubeClient.StorageV1().CSIDrivers().Get(ctx, common.DriverName, metav1.GetOptions{})
 		if err != nil {
 			GinkgoWriter.Printf("[waitForRequiresRepublish attempt %d] get failed: %v\n", attempt, err)
 			return false, err
 		}
 		GinkgoWriter.Printf("[waitForRequiresRepublish attempt %d] observed=%v want=%t\n", attempt, ptrBoolStr(driver.Spec.RequiresRepublish), want)
 		return driver.Spec.RequiresRepublish != nil && *driver.Spec.RequiresRepublish == want, nil
-	}, pollTimeout, pollInterval).Should(BeTrue(), "CSIDriver %q requiresRepublish did not converge to %t", driverName, want)
+	}, common.PollTimeout, common.PollInterval).Should(BeTrue(), "CSIDriver %q requiresRepublish did not converge to %t", common.DriverName, want)
 }
 
 // ptrBoolStr renders a *bool for log lines, without panicking on nil.
@@ -202,13 +195,13 @@ func ptrBoolStr(b *bool) string {
 // tokenRequests".
 func waitForTokenRequests(want []storagev1.TokenRequest) {
 	wantSorted := sortedTokenRequests(want)
-	By(fmt.Sprintf("waiting for CSIDriver %q tokenRequests to converge to %+v", driverName, wantSorted))
+	By(fmt.Sprintf("waiting for CSIDriver %q tokenRequests to converge to %+v", common.DriverName, wantSorted))
 	attempt := 0
 	Eventually(func() ([]storagev1.TokenRequest, error) {
 		attempt++
 		ctx, cancel := withAPITimeout()
 		defer cancel()
-		driver, err := kubeClient.StorageV1().CSIDrivers().Get(ctx, driverName, metav1.GetOptions{})
+		driver, err := kubeClient.StorageV1().CSIDrivers().Get(ctx, common.DriverName, metav1.GetOptions{})
 		if err != nil {
 			GinkgoWriter.Printf("[waitForTokenRequests attempt %d] get failed: %v\n", attempt, err)
 			return nil, err
@@ -216,7 +209,7 @@ func waitForTokenRequests(want []storagev1.TokenRequest) {
 		got := sortedTokenRequests(driver.Spec.TokenRequests)
 		GinkgoWriter.Printf("[waitForTokenRequests attempt %d] observed=%+v want=%+v\n", attempt, got, wantSorted)
 		return got, nil
-	}, pollTimeout, pollInterval).Should(Equal(wantSorted), "CSIDriver %q tokenRequests did not converge to %+v", driverName, want)
+	}, common.PollTimeout, common.PollInterval).Should(Equal(wantSorted), "CSIDriver %q tokenRequests did not converge to %+v", common.DriverName, want)
 }
 
 // sortedTokenRequests returns a copy of trs sorted by audience, for
@@ -241,19 +234,19 @@ func audiencesOf(trs []storagev1.TokenRequest) []string {
 // until, for every prefix in wantArgs, an arg with that prefix and the
 // corresponding value is present.
 func waitForDaemonSetArgs(wantArgs map[string]string) {
-	By(fmt.Sprintf("waiting for DaemonSet %s/%s csi-driver args to converge to %v", operatorNamespace, daemonSetName, wantArgs))
+	By(fmt.Sprintf("waiting for DaemonSet %s/%s csi-driver args to converge to %v", common.OperatorNamespace, common.DaemonSetName, wantArgs))
 	attempt := 0
 	Eventually(func() (map[string]string, error) {
 		attempt++
 		ctx, cancel := withAPITimeout()
 		defer cancel()
-		ds, err := kubeClient.AppsV1().DaemonSets(operatorNamespace).Get(ctx, daemonSetName, metav1.GetOptions{})
+		ds, err := kubeClient.AppsV1().DaemonSets(common.OperatorNamespace).Get(ctx, common.DaemonSetName, metav1.GetOptions{})
 		if err != nil {
 			GinkgoWriter.Printf("[waitForDaemonSetArgs attempt %d] get failed: %v\n", attempt, err)
 			return nil, err
 		}
 		for _, c := range ds.Spec.Template.Spec.Containers {
-			if c.Name != csiDriverContainer {
+			if c.Name != common.CSIDriverContainer {
 				continue
 			}
 			got := map[string]string{}
@@ -264,8 +257,8 @@ func waitForDaemonSetArgs(wantArgs map[string]string) {
 				attempt, got, wantArgs, ds.Generation, ds.Status.ObservedGeneration, ds.Status.UpdatedNumberScheduled, ds.Status.DesiredNumberScheduled, ds.Status.NumberAvailable)
 			return got, nil
 		}
-		return nil, fmt.Errorf("container %q not found in DaemonSet %s/%s", csiDriverContainer, operatorNamespace, daemonSetName)
-	}, pollTimeout, pollInterval).Should(Equal(wantArgs), "DaemonSet %s/%s args did not converge", operatorNamespace, daemonSetName)
+		return nil, fmt.Errorf("container %q not found in DaemonSet %s/%s", common.CSIDriverContainer, common.OperatorNamespace, common.DaemonSetName)
+	}, common.PollTimeout, common.PollInterval).Should(Equal(wantArgs), "DaemonSet %s/%s args did not converge", common.OperatorNamespace, common.DaemonSetName)
 }
 
 // argValue returns the value portion of the first arg starting with

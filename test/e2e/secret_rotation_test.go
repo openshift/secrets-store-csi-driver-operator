@@ -5,6 +5,7 @@ import (
 	. "github.com/onsi/gomega"
 
 	opv1 "github.com/openshift/api/operator/v1"
+	"github.com/openshift/secrets-store-csi-driver-operator/test/e2e/common"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -40,7 +41,7 @@ var _ = Describe("secret rotation", func() {
 	It("rejects secretRotation.type Custom without a custom block", func() {
 		ctx, cancel := withAPITimeout()
 		defer cancel()
-		driver, err := clusterCSIDriverClient.Get(ctx, driverName, metav1.GetOptions{})
+		driver, err := clusterCSIDriverClient.Get(ctx, common.DriverName, metav1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
 		driver.Spec.DriverConfig.DriverType = opv1.SecretsStoreDriverType
