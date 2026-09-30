@@ -22,8 +22,10 @@ import (
 // or Service IPs, and no in-cluster DNS. Curling a pod IP or a Service
 // DNS name from the test process fails no matter how long we retry.
 //
-// execClientPodName is a small pod we create once per TLS suite run, in
-// operatorNamespace, and leave running. The checks exec into it and run
+// execClientPodName is a small pod created in operatorNamespace and left
+// running for the "TLS profile adherence" Describe (BeforeAll through
+// AfterAll in tls_profile_test.go). That Describe is part of the single
+// e2e suite registered by TestE2E. The checks exec into the pod and run
 // curl there, on the same path a client such as Prometheus uses: cluster
 // routing, NetworkPolicy, and in-cluster DNS.
 const (
@@ -64,7 +66,7 @@ func ensureExecClientPod(ctx context.Context) error {
 		if pod.Status.Phase == corev1.PodRunning {
 			return waitForExecClientPodReady(ctx)
 		}
-		if err := kubeClient.CoreV1().Pods(operatorNamespace).Delete(ctx, execClientPodName, metav1.DeleteOptions{}); err != nil && !apierrors.IsNotFound(err) {
+		if err := deleteExecClientPod(ctx); err != nil {
 			return fmt.Errorf("failed to delete non-Running exec-client pod %s/%s (phase=%s): %w", operatorNamespace, execClientPodName, pod.Status.Phase, err)
 		}
 	case !apierrors.IsNotFound(err):
@@ -80,13 +82,8 @@ func ensureExecClientPod(ctx context.Context) error {
 		Spec: corev1.PodSpec{
 			RestartPolicy: corev1.RestartPolicyNever,
 			Containers: []corev1.Container{{
-				Name:  execClientContainerName,
-				Image: execClientImage(),
-				// sleep infinity (GNU coreutils, on ubi-minimal) so the pod stays
-				// up for the whole suite. A fixed sleep is too short: kubelet
-				// restart backoff (operatorRestartTimeout) can push the suite
-				// past an hour when the scenarios restart the operator many
-				// times. AfterAll deletes the pod.
+				Name:    execClientContainerName,
+				Image:   execClientImage(),
 				Command: []string{"sleep", "infinity"},
 			}},
 		},
@@ -117,9 +114,13 @@ func waitForExecClientPodReady(ctx context.Context) error {
 }
 
 // deleteExecClientPod deletes the pod created by ensureExecClientPod.
-// It is fine to call this when the pod was never created.
-func deleteExecClientPod(ctx context.Context) {
-	_ = kubeClient.CoreV1().Pods(operatorNamespace).Delete(ctx, execClientPodName, metav1.DeleteOptions{})
+// A missing pod is not an error: AfterAll also runs when the pod was never created.
+func deleteExecClientPod(ctx context.Context) error {
+	err := kubeClient.CoreV1().Pods(operatorNamespace).Delete(ctx, execClientPodName, metav1.DeleteOptions{})
+	if apierrors.IsNotFound(err) {
+		return nil
+	}
+	return err
 }
 
 // execInClientPod runs command in the exec-client pod through the exec

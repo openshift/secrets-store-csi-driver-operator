@@ -120,14 +120,16 @@ var _ = Describe("TLS profile adherence", Label("tls"), Ordered, func() {
 	AfterAll(func() {
 		cleanupCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 		defer cancel()
-		deleteExecClientPod(cleanupCtx)
+		// Restore the apiserver config even when pod delete fails. A failed
+		// Expect below would otherwise skip that restore.
+		deleteErr := deleteExecClientPod(cleanupCtx)
 
-		if original == nil {
-			return
+		if original != nil {
+			if err := restoreClusterAPIServerTLSConfig(cleanupCtx, original); err != nil {
+				GinkgoWriter.Printf("warning: restore apiserver TLS config: %v\n", err)
+			}
 		}
-		if err := restoreClusterAPIServerTLSConfig(cleanupCtx, original); err != nil {
-			GinkgoWriter.Printf("warning: restore apiserver TLS config: %v\n", err)
-		}
+		Expect(deleteErr).NotTo(HaveOccurred(), "delete exec-client pod")
 	})
 
 	DescribeTable("scenario matrix",
