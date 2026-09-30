@@ -324,7 +324,7 @@ func waitForPlaintextHTTP(ctx context.Context, podIP string, port int) error {
 
 func getReadyOperandPodIP(ctx context.Context) (string, error) {
 	pods, err := kubeClient.CoreV1().Pods(operatorNamespace).List(ctx, metav1.ListOptions{
-		LabelSelector: "app=" + operandDaemonSetName,
+		LabelSelector: "app=" + daemonSetName,
 	})
 	if err != nil {
 		return "", err
@@ -339,11 +339,11 @@ func getReadyOperandPodIP(ctx context.Context) (string, error) {
 			}
 		}
 	}
-	return "", fmt.Errorf("failed to find ready operand pod for DaemonSet %s", operandDaemonSetName)
+	return "", fmt.Errorf("failed to find ready operand pod for DaemonSet %s", daemonSetName)
 }
 
 func daemonSetHasContainerPort(ctx context.Context, port int32) (bool, error) {
-	ds, err := kubeClient.AppsV1().DaemonSets(operatorNamespace).Get(ctx, operandDaemonSetName, metav1.GetOptions{})
+	ds, err := kubeClient.AppsV1().DaemonSets(operatorNamespace).Get(ctx, daemonSetName, metav1.GetOptions{})
 	if err != nil {
 		return false, err
 	}

@@ -352,7 +352,7 @@ var _ = Describe("TLS profile adherence", Label("tls"), Ordered, func() {
 	})
 
 	It("E2 operand uses unix CSI socket", func() {
-		ds, err := kubeClient.AppsV1().DaemonSets(operatorNamespace).Get(ctx, operandDaemonSetName, metav1.GetOptions{})
+		ds, err := kubeClient.AppsV1().DaemonSets(operatorNamespace).Get(ctx, daemonSetName, metav1.GetOptions{})
 		if apierrors.IsNotFound(err) {
 			Skip("operand DaemonSet not found")
 		}
@@ -384,7 +384,7 @@ var _ = Describe("TLS profile adherence", Label("tls"), Ordered, func() {
 
 	It("E4 operand DaemonSet still reconciled", func() {
 		err := wait.PollUntilContextTimeout(ctx, pollInterval, operatorTimeout, true, func(ctx context.Context) (bool, error) {
-			ds, err := kubeClient.AppsV1().DaemonSets(operatorNamespace).Get(ctx, operandDaemonSetName, metav1.GetOptions{})
+			ds, err := kubeClient.AppsV1().DaemonSets(operatorNamespace).Get(ctx, daemonSetName, metav1.GetOptions{})
 			if apierrors.IsNotFound(err) {
 				return false, nil
 			}
