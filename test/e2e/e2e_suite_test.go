@@ -28,16 +28,15 @@ const (
 	// operatorDeploymentName is the operator Deployment and its app= label.
 	operatorDeploymentName = "secrets-store-csi-driver-operator"
 	operatorContainerName  = "secrets-store-csi-driver-operator"
-	operatorMetricsPort    = 8443
 	operandMetricsPort     = 8095
 	servingCertSecretName  = "secrets-store-csi-driver-operator-metrics-serving-cert"
 	// operatorMetricsServiceName is the ClusterIP Service fronting the
 	// operator's metrics listener (see
 	// config/manifests/stable/secrets-store-csi-driver-operator-metrics-service.yaml).
 	// Its own port is operatorMetricsServicePort (443), which is
-	// load-balanced by kube-proxy/OVN to the pod's operatorMetricsPort
-	// (8443) -- not the same number, so callers must use this port when
-	// dialing the Service rather than the pod directly.
+	// load-balanced by kube-proxy/OVN to the pod's metrics port (8443) --
+	// not the same number, so callers must use this port when dialing the
+	// Service rather than the pod directly.
 	operatorMetricsServiceName = "secrets-store-csi-driver-operator-metrics"
 	operatorMetricsServicePort = 443
 )
