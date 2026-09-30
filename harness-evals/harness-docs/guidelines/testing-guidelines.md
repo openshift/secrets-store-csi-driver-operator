@@ -34,6 +34,7 @@
 
 - `make test-unit` — runs unit tests via `go test`.
 - `make test-e2e` — runs `hack/e2e.sh`, then the Ginkgo suite in `test/e2e`. Pass `RUN_AZURE_E2E=true` to also run `test/e2e/azure` (operator-e2e-azure CI job).
+- `make test-e2e-tls` — runs TLS profile adherence e2e specs only (`-ginkgo.label-filter=tls`).
 - `make verify` — runs code verification (formatting, vetting, Go version checks).
 - `make test` — runs `test-unit` (the default test target).
 - Run `make verify` before submitting changes to catch formatting and vet issues.
@@ -43,6 +44,7 @@
 - E2E tests require a running OpenShift cluster with the operator and driver already deployed, and are executed via `hack/e2e.sh` plus the Ginkgo suites below.
 - `hack/e2e.sh` handles its own test setup, execution, and teardown including artifact collection. It creates an ephemeral namespace (`secrets-store-test-ns-<random>`) and cleans it up via `test_teardown`. It validates: CSIDriver resource existence, provider pod readiness, SecretProviderClass creation, and secret volume mounting.
 - E2E tests are run in CI via Prow jobs — they are not expected to run locally in most development workflows.
+- TLS profile adherence e2e (`make test-e2e-tls`) lives under `test/e2e/` as Ginkgo specs (`Label("tls")`, `Ordered` + `DescribeTable`), and requires FeatureGate `TLSAdherence` so `apiserver.spec.tlsAdherence` is served (specs Skip when unavailable). Optional destructive RBAC cases: `E2E_TLS_RBAC=1`.
 
 ### Ginkgo E2E Suites
 
