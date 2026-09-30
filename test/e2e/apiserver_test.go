@@ -36,11 +36,7 @@ func updateClusterAPIServerTLSConfig(ctx context.Context, profile *configv1.TLSS
 			return err
 		}
 		updated := apiServer.DeepCopy()
-		if profile != nil {
-			updated.Spec.TLSSecurityProfile = profile.DeepCopy()
-		} else {
-			updated.Spec.TLSSecurityProfile = nil
-		}
+		updated.Spec.TLSSecurityProfile = profile.DeepCopy()
 		updated.Spec.TLSAdherence = adherence
 		_, err = configClient.APIServers().Update(ctx, updated, metav1.UpdateOptions{})
 		return err
@@ -50,9 +46,6 @@ func updateClusterAPIServerTLSConfig(ctx context.Context, profile *configv1.TLSS
 // restoreClusterAPIServerTLSConfig reverts apiserver TLS settings captured before a test mutation.
 // tlsAdherence cannot be removed once set, so an originally unset value is restored to Legacy.
 func restoreClusterAPIServerTLSConfig(ctx context.Context, original *apiserverTLSConfig) error {
-	if original == nil {
-		return nil
-	}
 	adherence := original.adherence
 	if adherence == configv1.TLSAdherencePolicyNoOpinion {
 		adherence = configv1.TLSAdherencePolicyLegacyAdheringComponentsOnly
@@ -68,11 +61,12 @@ func isTLSAdherenceUnsupported(err error) bool {
 	// A value the API validated and rejected as an unrecognized enum member
 	// (e.g. B6's deliberately-bogus "FutureMode") proves tlsAdherence IS
 	// served and enforced on this cluster -- the opposite of "unsupported".
-	// Carve this out before the broader heuristics below, which exist to
-	// detect the field/feature not being served at all (missing
+	// FieldValueNotSupported is the status cause field.NotSupported sets for
+	// that rejection. Carve it out before the broader heuristics below, which
+	// exist to detect the field/feature not being served at all (missing
 	// FeatureGate, RBAC, managed-cluster admission denial), so a correctly
 	// rejected bogus value isn't mistaken for that and swallowed by a Skip.
-	if strings.Contains(msg, "unsupported value") && strings.Contains(msg, "supported values") {
+	if apierrors.HasStatusCause(err, metav1.CauseTypeFieldValueNotSupported) {
 		return false
 	}
 	// Field not served / validation / RBAC / managed-cluster admission denials.

@@ -17,38 +17,28 @@ import (
 	utilexec "k8s.io/client-go/util/exec"
 )
 
-// The Ginkgo process running this suite is a ci-operator TestStep
-// container on the CI build farm, not a workload on the cluster under
-// test -- it only has $KUBECONFIG credentials to the target cluster's API
-// server, no L3 route to that cluster's pod/Service network, and no
-// access to its in-cluster DNS. Wire checks that dialed a pod IP or a
-// cluster-internal Service FQDN directly from Ginkgo could therefore
-// never succeed, no matter how long they retried.
+// The test process is a ci-operator step on the build farm, not a pod on
+// the cluster. It has kubeconfig for the API server only: no route to pod
+// or Service IPs, and no in-cluster DNS. Curling a pod IP or a Service
+// DNS name from the test process fails no matter how long we retry.
 //
-// execClientPodName is a small, long-lived helper pod created once (per
-// TLS suite run) in operatorNamespace purely so curl can run *from inside
-// the cluster's real pod network*: exec-ing into it and running curl
-// exercises the exact path (CNI/OVN routing, NetworkPolicy, cluster DNS)
-// that a real client such as Prometheus would use, which a direct dial
-// from Ginkgo never could.
+// execClientPodName is a small pod we create once per TLS suite run, in
+// operatorNamespace, and leave running. The checks exec into it and run
+// curl there, on the same path a client such as Prometheus uses: cluster
+// routing, NetworkPolicy, and in-cluster DNS.
 const (
 	execClientPodName       = "sscsi-e2e-tls-client"
 	execClientContainerName = "client"
-	// execClientImageEnv optionally overrides execClientDefaultImage, e.g.
-	// on a disconnected/restricted-network cluster where this default
-	// (a public registry.access.redhat.com pull) isn't reachable.
+	// Set E2E_TLS_CLIENT_IMAGE to override execClientDefaultImage. A
+	// disconnected cluster often cannot pull registry.access.redhat.com.
 	//
-	// The operand images already running in-cluster (DaemonSet in
-	// assets/node.yaml: csi-driver, csi-node-driver-registrar,
-	// csi-liveness-probe) were considered as an in-cluster-resolvable
-	// alternative, but all three are minimal single-purpose sidecar images
-	// with no shell or curl, so they can't run the wire checks below --
-	// hence the explicit override rather than sourcing this from the
-	// DaemonSet.
+	// The operand images already on the cluster (csi-driver,
+	// csi-node-driver-registrar, and csi-liveness-probe in assets/node.yaml)
+	// are too small to use here: none of them has a shell or curl. The image
+	// has to be set explicitly instead of taken from the DaemonSet.
 	execClientImageEnv = "E2E_TLS_CLIENT_IMAGE"
-	// execClientDefaultImage needs a curl new enough to support
-	// --tlsv1.x/--tls-max (curl >=7.54); ubi9-minimal's is. Pinned by
-	// digest (rather than :latest) for reproducibility.
+	// ubi9-minimal ships curl >= 7.54, which is what --tlsv1.x and --tls-max
+	// need. The digest is pinned so the suite does not float on :latest.
 	execClientDefaultImage = "registry.access.redhat.com/ubi9/ubi-minimal@sha256:8eb2830d0936237fc13a1f2f7e45aecf90d69043380ad167fad0343632937f41"
 	execPodReadyTimeout    = 3 * time.Minute
 )
@@ -60,15 +50,13 @@ func execClientImage() string {
 	return execClientDefaultImage
 }
 
-// ensureExecClientPod creates the exec-client pod if it doesn't already
-// exist and waits for it to be Ready. Safe to call multiple times (e.g.
-// from a BeforeAll that may run more than once across retried suites).
+// ensureExecClientPod creates the exec-client pod when it is missing and
+// waits until it is Ready. Calling it again is fine; BeforeAll can run
+// more than once when a suite is retried.
 //
-// An existing pod found in any phase other than Running is deleted and
-// recreated rather than waited on: with RestartPolicyNever, a pod that has
-// gone Succeeded/Failed/Unknown will never come back on its own, and
-// waiting on its Ready condition would just spin until execPodReadyTimeout
-// on every remaining call for the rest of the suite.
+// If the pod exists but is not Running, we delete it and create a new one.
+// RestartPolicy is Never, so a Succeeded, Failed, or Unknown pod stays that
+// way. Waiting on Ready would just hit execPodReadyTimeout on every later call.
 func ensureExecClientPod(ctx context.Context) error {
 	pod, err := kubeClient.CoreV1().Pods(operatorNamespace).Get(ctx, execClientPodName, metav1.GetOptions{})
 	switch {
@@ -94,12 +82,11 @@ func ensureExecClientPod(ctx context.Context) error {
 			Containers: []corev1.Container{{
 				Name:  execClientContainerName,
 				Image: execClientImage(),
-				// "infinity" (GNU coreutils, present on ubi-minimal) rather
-				// than a fixed duration: this pod must outlive the whole
-				// suite, which can run well past an hour once kubelet's
-				// per-container restart backoff (see operatorRestartTimeout)
-				// stacks up across the scenario matrix's many operator
-				// restarts. deleteExecClientPod (AfterAll) tears it down.
+				// sleep infinity (GNU coreutils, on ubi-minimal) so the pod stays
+				// up for the whole suite. A fixed sleep is too short: kubelet
+				// restart backoff (operatorRestartTimeout) can push the suite
+				// past an hour when the scenarios restart the operator many
+				// times. AfterAll deletes the pod.
 				Command: []string{"sleep", "infinity"},
 			}},
 		},
@@ -129,26 +116,22 @@ func waitForExecClientPodReady(ctx context.Context) error {
 	return nil
 }
 
-// deleteExecClientPod tears down the pod created by ensureExecClientPod.
-// Safe to call even if the pod was never created.
+// deleteExecClientPod deletes the pod created by ensureExecClientPod.
+// It is fine to call this when the pod was never created.
 func deleteExecClientPod(ctx context.Context) {
 	_ = kubeClient.CoreV1().Pods(operatorNamespace).Delete(ctx, execClientPodName, metav1.DeleteOptions{})
 }
 
-// execInClientPod runs command inside the exec-client pod via the
-// Kubernetes exec subresource -- the same mechanism `oc exec` uses --
-// returning the command's stdout/stderr. A nonzero remote exit code comes
-// back as a *utilexec.CodeExitError wrapped in err; use curlExitCode to
-// pull the exit code back out.
+// execInClientPod runs command in the exec-client pod through the exec
+// API, the same way oc exec does, and returns stdout and stderr. If the
+// command exits nonzero, err is a *utilexec.CodeExitError. curlExitCode
+// reads that status back out.
 //
-// It re-ensures the pod exists before every call (a cheap Get in the
-// common case where it's already Ready) rather than assuming
-// ensureExecClientPod's one BeforeAll call is enough for the whole suite:
-// on constrained CI lanes (e.g. compact/FIPS clusters where masters double
-// as workers) a bare, controller-less Pod like this one can be lost mid-run
-// to node-pressure eviction, and nothing would otherwise recreate it --
-// every subsequent wire check would then fail with "pods ... not found"
-// for the rest of the suite instead of just this one attempt.
+// The pod is checked before every call. When it is already Ready that is
+// only a Get. BeforeAll is not enough for the whole suite: on a small CI
+// cluster (compact or FIPS, where masters are also workers) this pod has
+// no controller, so node pressure can evict it. If we did not create it
+// again, every later check would fail with "pod not found".
 func execInClientPod(ctx context.Context, command []string) (stdout, stderr string, err error) {
 	if err := ensureExecClientPod(ctx); err != nil {
 		return "", "", fmt.Errorf("failed to ensure exec-client pod before exec: %w", err)
@@ -179,10 +162,9 @@ func execInClientPod(ctx context.Context, command []string) (stdout, stderr stri
 	return stdoutBuf.String(), stderrBuf.String(), err
 }
 
-// curlExitCode extracts curl's remote exit code from an execInClientPod
-// error, or -1 if err isn't a remote exit-code error (e.g. a transport
-// failure reaching the exec-client pod itself, as opposed to curl running
-// and failing inside it).
+// curlExitCode returns curl's exit status from an execInClientPod error.
+// It returns -1 when the failure is not curl's own exit, for example when
+// we could not reach the exec-client pod at all.
 func curlExitCode(err error) int {
 	var exitErr utilexec.CodeExitError
 	if errors.As(err, &exitErr) {
