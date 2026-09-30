@@ -21,9 +21,8 @@ const (
 	driverName = "secrets-store.csi.k8s.io"
 	// operatorNamespace is where the operator and its node DaemonSet run.
 	operatorNamespace = "openshift-cluster-csi-drivers"
-	// daemonSetName / operandDaemonSetName is the driver's node DaemonSet.
-	daemonSetName        = "secrets-store-csi-driver-node"
-	operandDaemonSetName = daemonSetName
+	// daemonSetName is the driver's node DaemonSet.
+	daemonSetName = "secrets-store-csi-driver-node"
 	// csiDriverContainer is the driver container within the DaemonSet.
 	csiDriverContainer = "csi-driver"
 	// operatorDeploymentName is the operator Deployment and its app= label.
