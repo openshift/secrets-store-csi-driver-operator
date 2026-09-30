@@ -297,16 +297,14 @@ var _ = Describe("TLS profile adherence", Label("tls"), Ordered, func() {
 	It("D3 Strict to Legacy restarts and defaults", func() {
 		before, err := waitForOperatorReady(ctx)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(updateClusterAPIServerTLSConfig(ctx, tlsProfileIntermediate, configv1.TLSAdherencePolicyStrictAllComponents)).To(Succeed())
+		// D2 leaves Intermediate + Strict. This Ordered suite applies Modern so
+		// the profile change restarts the operator.
+		Expect(updateClusterAPIServerTLSConfig(ctx, tlsProfileModern, configv1.TLSAdherencePolicyStrictAllComponents)).To(Succeed())
 		strictPod, err := waitForOperatorRestart(ctx, before.RestartKey)
-		if err != nil {
-			strictPod, err = waitForOperatorReady(ctx)
-			Expect(err).NotTo(HaveOccurred())
-			GinkgoWriter.Printf("D3: no restart after Strict update (restartKey=%s); continuing\n", strictPod.RestartKey)
-		}
-		Expect(waitForOperatorLogContains(ctx, strictPod.Name, "Applied cluster TLS profile")).To(Succeed())
+		Expect(err).NotTo(HaveOccurred(), "restart after Modern+Strict")
+		Expect(waitForOperatorLogContains(ctx, strictPod.Name, "Applied cluster TLS profile", "minTLSVersion=VersionTLS13")).To(Succeed())
 
-		Expect(updateClusterAPIServerTLSConfig(ctx, tlsProfileIntermediate, configv1.TLSAdherencePolicyLegacyAdheringComponentsOnly)).To(Succeed())
+		Expect(updateClusterAPIServerTLSConfig(ctx, tlsProfileModern, configv1.TLSAdherencePolicyLegacyAdheringComponentsOnly)).To(Succeed())
 		legacyPod, err := waitForOperatorRestart(ctx, strictPod.RestartKey)
 		Expect(err).NotTo(HaveOccurred(), "restart Strict→Legacy")
 		Expect(waitForOperatorLogContains(ctx, legacyPod.Name, "leaving --config as-is")).To(Succeed())
