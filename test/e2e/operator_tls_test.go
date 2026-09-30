@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"strconv"
 	"strings"
 	"time"
 
@@ -286,10 +287,10 @@ func waitForOperatorLogContains(ctx context.Context, podName string, substrings 
 }
 
 // assertPlaintextHTTP execs curl inside execClientPodName (see
-// exec_client_test.go) to confirm addr speaks plaintext HTTP: requesting
-// http://addr against a TLS listener fails curl's HTTP response parsing
-// (nonzero exit) rather than returning a 200, so a clean 2xx/3xx already
-// proves this wasn't silently upgraded to TLS.
+// exec_client_test.go) to confirm addr speaks plaintext HTTP. A Go
+// net/http TLS listener answers a plaintext request with HTTP 400 and
+// curl exits 0, so success alone is not enough: only a 2xx/3xx status
+// proves the port was not silently upgraded to TLS.
 func assertPlaintextHTTP(ctx context.Context, podIP string, port int) error {
 	addr := net.JoinHostPort(podIP, fmt.Sprintf("%d", port))
 	args := []string{
@@ -300,6 +301,14 @@ func assertPlaintextHTTP(ctx context.Context, podIP string, port int) error {
 	stdout, stderr, err := execInClientPod(ctx, args)
 	if err != nil {
 		return fmt.Errorf("curl http://%s/metrics failed (exit=%d) stdout=%q stderr=%q: %w", addr, curlExitCode(err), stdout, stderr, err)
+	}
+	codeStr := strings.TrimSpace(stdout)
+	code, convErr := strconv.Atoi(codeStr)
+	if convErr != nil {
+		return fmt.Errorf("curl http://%s/metrics returned invalid status %q stderr=%q: %w", addr, codeStr, stderr, convErr)
+	}
+	if code < 200 || code >= 400 {
+		return fmt.Errorf("curl http://%s/metrics returned HTTP %d, want 2xx or 3xx", addr, code)
 	}
 	return nil
 }
