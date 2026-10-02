@@ -45,6 +45,7 @@
 - The e2e script creates an ephemeral namespace (`secrets-store-test-ns-<random>`) and cleans it up via `test_teardown`.
 - E2E tests validate: CSIDriver resource existence, provider pod readiness, SecretProviderClass creation, and secret volume mounting.
 - E2E tests are run in CI via Prow jobs — they are not expected to run locally in most development workflows.
+- TLS profile adherence specs live under `test/e2e/` and run as part of `make test-e2e`. They require FeatureGate `TLSAdherence` so `apiserver.spec.tlsAdherence` is served (specs Skip when unavailable). Optional destructive RBAC cases: `E2E_TLS_RBAC=1`.
 
 ## Code Verification
 

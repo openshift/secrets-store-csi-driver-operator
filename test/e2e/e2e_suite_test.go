@@ -6,10 +6,12 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	configv1client "github.com/openshift/client-go/config/clientset/versioned/typed/config/v1"
 	operatorv1client "github.com/openshift/client-go/operator/clientset/versioned"
 	operatorv1typed "github.com/openshift/client-go/operator/clientset/versioned/typed/operator/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
 )
 
@@ -23,10 +25,26 @@ const (
 	daemonSetName = "secrets-store-csi-driver-node"
 	// csiDriverContainer is the driver container within the DaemonSet.
 	csiDriverContainer = "csi-driver"
+	// operatorDeploymentName is the operator Deployment and its app= label.
+	operatorDeploymentName = "secrets-store-csi-driver-operator"
+	operatorContainerName  = "secrets-store-csi-driver-operator"
+	operandMetricsPort     = 8095
+	servingCertSecretName  = "secrets-store-csi-driver-operator-metrics-serving-cert"
+	// operatorMetricsServiceName is the ClusterIP Service fronting the
+	// operator's metrics listener (see
+	// config/manifests/stable/secrets-store-csi-driver-operator-metrics-service.yaml).
+	// Its own port is operatorMetricsServicePort (443), which is
+	// load-balanced by kube-proxy/OVN to the pod's metrics port (8443) --
+	// not the same number, so callers must use this port when dialing the
+	// Service rather than the pod directly.
+	operatorMetricsServiceName = "secrets-store-csi-driver-operator-metrics"
+	operatorMetricsServicePort = 443
 )
 
 var (
+	restConfig             *rest.Config
 	kubeClient             kubernetes.Interface
+	configClient           configv1client.ConfigV1Interface
 	clusterCSIDriverClient operatorv1typed.ClusterCSIDriverInterface
 )
 
@@ -36,11 +54,15 @@ func TestE2E(t *testing.T) {
 }
 
 var _ = BeforeSuite(func() {
-	restConfig, err := config.GetConfig()
+	cfg, err := config.GetConfig()
 	Expect(err).NotTo(HaveOccurred(), "unable to load kubeconfig")
+	restConfig = cfg
 
 	kubeClient, err = kubernetes.NewForConfig(restConfig)
 	Expect(err).NotTo(HaveOccurred(), "unable to build kube client")
+
+	configClient, err = configv1client.NewForConfig(restConfig)
+	Expect(err).NotTo(HaveOccurred(), "unable to build config client")
 
 	operatorClientset, err := operatorv1client.NewForConfig(restConfig)
 	Expect(err).NotTo(HaveOccurred(), "unable to build operator client")
