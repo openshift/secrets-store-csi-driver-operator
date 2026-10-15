@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -102,7 +103,9 @@ func newAzureClients() (*azureClients, error) {
 
 // ResourceGroupLocation returns the Azure location of resourceGroup.
 func (a *azureClients) ResourceGroupLocation(resourceGroup string) (string, error) {
-	resp, err := a.resourceGroups.Get(context.Background(), resourceGroup, nil)
+	ctx, cancel := context.WithTimeout(context.Background(), common.APICallTimeout)
+	defer cancel()
+	resp, err := a.resourceGroups.Get(ctx, resourceGroup, nil)
 	if err != nil {
 		return "", fmt.Errorf("unable to get resource group %q: %w", resourceGroup, err)
 	}
@@ -117,7 +120,11 @@ func (a *azureClients) ResourceGroupLocation(resourceGroup string) (string, erro
 // performs and satisfying the API requirement that accessPolicies be set
 // when RBAC authorization is disabled.
 func (a *azureClients) KeyVaultCreate(name, resourceGroup, location string) error {
-	poller, err := a.vaults.BeginCreateOrUpdate(context.Background(), resourceGroup, name,
+	// Provisioning is a long-running operation; bound the entire operation,
+	// including polling, rather than applying the normal request timeout.
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
+	poller, err := a.vaults.BeginCreateOrUpdate(ctx, resourceGroup, name,
 		armkeyvault.VaultCreateOrUpdateParameters{
 			Location: to.Ptr(location),
 			Properties: &armkeyvault.VaultProperties{
@@ -139,7 +146,7 @@ func (a *azureClients) KeyVaultCreate(name, resourceGroup, location string) erro
 	if err != nil {
 		return fmt.Errorf("unable to start Key Vault %q creation: %w", name, err)
 	}
-	_, err = poller.PollUntilDone(context.Background(), nil)
+	_, err = poller.PollUntilDone(ctx, nil)
 	return err
 }
 
@@ -160,7 +167,9 @@ func (a *azureClients) secretAccessPolicyEntry(objectID string, permissions ...a
 // KeyVaultAddSecretPolicy adds secret permissions for objectID on vaultName
 // via an access-policy update.
 func (a *azureClients) KeyVaultAddSecretPolicy(vaultName, resourceGroup, objectID string, permissions ...armkeyvault.SecretPermissions) error {
-	_, err := a.vaults.UpdateAccessPolicy(context.Background(), resourceGroup, vaultName, armkeyvault.AccessPolicyUpdateKindAdd,
+	ctx, cancel := context.WithTimeout(context.Background(), common.APICallTimeout)
+	defer cancel()
+	_, err := a.vaults.UpdateAccessPolicy(ctx, resourceGroup, vaultName, armkeyvault.AccessPolicyUpdateKindAdd,
 		armkeyvault.VaultAccessPolicyParameters{
 			Properties: &armkeyvault.VaultAccessPolicyProperties{
 				AccessPolicies: []*armkeyvault.AccessPolicyEntry{
@@ -174,7 +183,9 @@ func (a *azureClients) KeyVaultAddSecretPolicy(vaultName, resourceGroup, objectI
 // azCredentialObjectID returns the Azure AD object ID (oid) of the
 // credential's principal by decoding its access token.
 func azCredentialObjectID(cred azcore.TokenCredential) (string, error) {
-	token, err := cred.GetToken(context.Background(), policy.TokenRequestOptions{
+	ctx, cancel := context.WithTimeout(context.Background(), common.APICallTimeout)
+	defer cancel()
+	token, err := cred.GetToken(ctx, policy.TokenRequestOptions{
 		Scopes: []string{"https://management.azure.com/.default"},
 	})
 	if err != nil {
@@ -203,11 +214,13 @@ func azCredentialObjectID(cred azcore.TokenCredential) (string, error) {
 // KeyVaultSecretSet sets secretName's value in the given Key Vault via the
 // data-plane azsecrets client.
 func (a *azureClients) KeyVaultSecretSet(vaultName, secretName, value string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), common.APICallTimeout)
+	defer cancel()
 	client, err := azsecrets.NewClient(keyVaultURL(vaultName), a.cred, nil)
 	if err != nil {
 		return fmt.Errorf("unable to build secrets client for vault %q: %w", vaultName, err)
 	}
-	_, err = client.SetSecret(context.Background(), secretName, azsecrets.SetSecretParameters{Value: to.Ptr(value)}, nil)
+	_, err = client.SetSecret(ctx, secretName, azsecrets.SetSecretParameters{Value: to.Ptr(value)}, nil)
 	return err
 }
 
@@ -224,10 +237,12 @@ func (a *azureClients) KeyVaultSetPolicy(vaultName, resourceGroup, objectID stri
 // is polled to completion, matching az keyvault delete/purge --no-wait's
 // fire-and-forget semantics.
 func (a *azureClients) KeyVaultDelete(name, resourceGroup, location string) error {
-	if _, err := a.vaults.Delete(context.Background(), resourceGroup, name, nil); err != nil && !isAzureNotFound(err) {
+	ctx, cancel := context.WithTimeout(context.Background(), common.APICallTimeout)
+	defer cancel()
+	if _, err := a.vaults.Delete(ctx, resourceGroup, name, nil); err != nil && !isAzureNotFound(err) {
 		return fmt.Errorf("unable to delete Key Vault %q: %w", name, err)
 	}
-	if _, err := a.vaults.BeginPurgeDeleted(context.Background(), name, location, nil); err != nil && !isAzureDeletedVaultNotFound(err) {
+	if _, err := a.vaults.BeginPurgeDeleted(ctx, name, location, nil); err != nil && !isAzureDeletedVaultNotFound(err) {
 		return err
 	}
 	return nil
@@ -248,14 +263,18 @@ func isAzureDeletedVaultNotFound(err error) bool {
 
 // IdentityCreate creates a user-assigned managed identity.
 func (a *azureClients) IdentityCreate(name, resourceGroup, location string) error {
-	_, err := a.identities.CreateOrUpdate(context.Background(), resourceGroup, name, armmsi.Identity{Location: to.Ptr(location)}, nil)
+	ctx, cancel := context.WithTimeout(context.Background(), common.APICallTimeout)
+	defer cancel()
+	_, err := a.identities.CreateOrUpdate(ctx, resourceGroup, name, armmsi.Identity{Location: to.Ptr(location)}, nil)
 	return err
 }
 
 // IdentityClientID returns the identity's clientId, used as the
 // SecretProviderClass's `clientID` parameter.
 func (a *azureClients) IdentityClientID(name, resourceGroup string) (string, error) {
-	resp, err := a.identities.Get(context.Background(), resourceGroup, name, nil)
+	ctx, cancel := context.WithTimeout(context.Background(), common.APICallTimeout)
+	defer cancel()
+	resp, err := a.identities.Get(ctx, resourceGroup, name, nil)
 	if err != nil {
 		return "", fmt.Errorf("unable to get identity %q: %w", name, err)
 	}
@@ -268,7 +287,9 @@ func (a *azureClients) IdentityClientID(name, resourceGroup string) (string, err
 // IdentityPrincipalID returns the identity's principalId, used as the Key
 // Vault access policy's object ID.
 func (a *azureClients) IdentityPrincipalID(name, resourceGroup string) (string, error) {
-	resp, err := a.identities.Get(context.Background(), resourceGroup, name, nil)
+	ctx, cancel := context.WithTimeout(context.Background(), common.APICallTimeout)
+	defer cancel()
+	resp, err := a.identities.Get(ctx, resourceGroup, name, nil)
 	if err != nil {
 		return "", fmt.Errorf("unable to get identity %q: %w", name, err)
 	}
@@ -282,7 +303,9 @@ func (a *azureClients) IdentityPrincipalID(name, resourceGroup string) (string, 
 // consequence, any federated credentials attached to it -- federated
 // credentials are child resources of the identity in Azure's resource model).
 func (a *azureClients) IdentityDelete(name, resourceGroup string) error {
-	_, err := a.identities.Delete(context.Background(), resourceGroup, name, nil)
+	ctx, cancel := context.WithTimeout(context.Background(), common.APICallTimeout)
+	defer cancel()
+	_, err := a.identities.Delete(ctx, resourceGroup, name, nil)
 	return err
 }
 
@@ -293,7 +316,9 @@ func (a *azureClients) IdentityDelete(name, resourceGroup string) error {
 // token -- this is the core Workload Identity Federation trust relationship,
 // matching azure.bats's `az identity federated-credential create`.
 func (a *azureClients) FederatedCredentialCreate(credentialName, identityName, resourceGroup, issuer, subject, audience string) error {
-	_, err := a.fedCred.CreateOrUpdate(context.Background(), resourceGroup, identityName, credentialName,
+	ctx, cancel := context.WithTimeout(context.Background(), common.APICallTimeout)
+	defer cancel()
+	_, err := a.fedCred.CreateOrUpdate(ctx, resourceGroup, identityName, credentialName,
 		armmsi.FederatedIdentityCredential{
 			Properties: &armmsi.FederatedIdentityCredentialProperties{
 				Issuer:    to.Ptr(issuer),
@@ -385,15 +410,15 @@ func restoreDriverConfig() {
 	}
 }
 
-func rotateAndAssert(namespace, podName, keyVaultName, secretName string, currentValue *string) {
-	By("configuring a short secretRotation.minimumRefreshAge, preserving the Managed tokenRequests audience")
+func configureRotation(rotationType opv1.SecretRotationType) {
+	By(fmt.Sprintf("setting secretRotation.type to %s, preserving the Managed Azure WIF audience", rotationType))
+	enabled := rotationType == opv1.SecretRotationCustom
+	rotation := opv1.SecretsStoreSecretRotation{Type: rotationType}
+	if enabled {
+		rotation.Custom = opv1.CustomSecretRotation{MinimumRefreshAge: rotationMinimumRefreshAge}
+	}
 	setSecretsStoreConfig(opv1.SecretsStoreCSIDriverConfigSpec{
-		SecretRotation: opv1.SecretsStoreSecretRotation{
-			Type: opv1.SecretRotationCustom,
-			Custom: opv1.CustomSecretRotation{
-				MinimumRefreshAge: rotationMinimumRefreshAge,
-			},
-		},
+		SecretRotation: rotation,
 		TokenRequests: opv1.SecretsStoreTokenRequests{
 			Type: opv1.TokenRequestsManaged,
 			Managed: opv1.ManagedTokenRequests{
@@ -405,19 +430,41 @@ func rotateAndAssert(namespace, podName, keyVaultName, secretName string, curren
 	})
 
 	Eventually(func() (string, error) {
-		return env.DaemonSetArgValue(rotationPollIntervalArgPrefix)
-	}, common.PollTimeout, common.PollInterval).Should(Equal(rotationExpectedPollInterval),
-		"DaemonSet did not receive %s%s", rotationPollIntervalArgPrefix, rotationExpectedPollInterval)
-	GinkgoWriter.Printf("DaemonSet %s=%s\n", rotationPollIntervalArgPrefix, rotationExpectedPollInterval)
+		return env.DaemonSetArgValue("--enable-secret-rotation=")
+	}, common.PollTimeout, common.PollInterval).Should(Equal(fmt.Sprint(enabled)))
+	if enabled {
+		Eventually(func() (string, error) {
+			return env.DaemonSetArgValue(rotationPollIntervalArgPrefix)
+		}, common.PollTimeout, common.PollInterval).Should(Equal(rotationExpectedPollInterval),
+			"DaemonSet did not receive %s%s", rotationPollIntervalArgPrefix, rotationExpectedPollInterval)
+	}
+	Eventually(func() (bool, error) {
+		ctx, cancel := env.WithAPITimeout()
+		defer cancel()
+		driver, err := env.Kube.StorageV1().CSIDrivers().Get(ctx, common.DriverName, metav1.GetOptions{})
+		if err != nil {
+			return false, err
+		}
+		return driver.Spec.RequiresRepublish != nil && *driver.Spec.RequiresRepublish == enabled, nil
+	}, common.PollTimeout, common.PollInterval).Should(BeTrue(), "CSIDriver requiresRepublish did not converge to %t", enabled)
 	env.WaitForDaemonSetRollout()
+}
 
-	By("updating the real Key Vault secret's value")
-	newValue := *currentValue + "-rotated"
-	Expect(az.KeyVaultSecretSet(keyVaultName, secretName, newValue)).To(Succeed())
-	*currentValue = newValue
+func readRotationValues(namespace, podName string) (map[string]string, error) {
+	mounted, err := env.ReadMountedFile(namespace, podName, "/mnt/secrets-store/secretalias")
+	if err != nil {
+		return nil, err
+	}
+	synced, err := env.GetSecretKey(namespace, rotationSyncedSecretName, "username")
+	if err != nil {
+		return nil, err
+	}
+	return map[string]string{"mounted": mounted, "synced": synced}, nil
+}
 
-	By("waiting for the mounted file to reflect the new Key Vault secret value")
-	Eventually(func() (string, error) {
-		return env.ReadMountedFile(namespace, podName, "/mnt/secrets-store/"+secretName)
-	}, common.PollTimeout, common.PollInterval).Should(Equal(newValue), "mounted secret did not rotate to the new Key Vault value within the expected window")
+func waitForRotationValues(namespace, podName, want string) {
+	By("waiting for both the mounted file and synced Kubernetes Secret to match Key Vault")
+	Eventually(func() (map[string]string, error) {
+		return readRotationValues(namespace, podName)
+	}, common.PollTimeout, common.PollInterval).Should(Equal(map[string]string{"mounted": want, "synced": want}))
 }

@@ -14,17 +14,21 @@ import (
 
 const (
 	// batsSecretName and batsSecretValue mirror azure.bats defaults.
-	batsSecretName  = "secret1"
-	batsSecretValue = "test"
-	syncLabelValue  = "test"
+	batsSecretName    = "secret1"
+	batsSecretValue   = "test"
+	secondSecretName  = "secret2"
+	secondSecretValue = "different-test-value"
+	syncLabelValue    = "test"
 
-	inlinePodName   = "secrets-store-inline-crd"
-	multiplePodName = "secrets-store-inline-multiple-crd"
-	spcAzure        = "azure"
-	spcAzureSync    = "azure-sync"
-	deploymentOne   = "busybox-deployment"
-	deploymentTwo   = "busybox-deployment-two"
-	rotationPodName = "sscsi-e2e-rotation-pod"
+	inlinePodName            = "secrets-store-inline-crd"
+	multiplePodName          = "secrets-store-inline-multiple-crd"
+	spcAzure                 = "azure"
+	spcAzureSync             = "azure-sync"
+	deploymentOne            = "busybox-deployment"
+	deploymentTwo            = "busybox-deployment-two"
+	rotationPodName          = "sscsi-e2e-rotation-pod"
+	rotationSPCName          = "azure-rotation"
+	rotationSyncedSecretName = "rotation-secret"
 )
 
 var _ = Describe("Azure provider e2e", Ordered, func() {
@@ -54,6 +58,7 @@ var _ = Describe("Azure provider e2e", Ordered, func() {
 		By("creating a Key Vault and secret")
 		Expect(az.KeyVaultCreate(keyVaultName, resourceGroup, location)).To(Succeed())
 		Expect(az.KeyVaultSecretSet(keyVaultName, batsSecretName, batsSecretValue)).To(Succeed())
+		Expect(az.KeyVaultSecretSet(keyVaultName, secondSecretName, secondSecretValue)).To(Succeed())
 
 		By("creating a user-assigned managed identity")
 		Expect(az.IdentityCreate(identityName, resourceGroup, location)).To(Succeed())
@@ -135,10 +140,11 @@ var _ = Describe("Azure provider e2e", Ordered, func() {
 
 	Context("sync with Kubernetes secrets", func() {
 		It("creates the sync SecretProviderClass and busybox deployments", func() {
-			Expect(deploySyncSecretProviderClass(mainNamespace, spcAzureSync, clientID, keyVaultName, az.TenantID, batsSecretName, syncLabelValue)).To(Succeed())
+			Expect(deploySyncSecretProviderClass(mainNamespace, spcAzureSync, clientID, keyVaultName, az.TenantID, batsSecretName, "foosecret", syncLabelValue)).To(Succeed())
 			Expect(deploySyncDeployment(mainNamespace, deploymentOne, spcAzureSync)).To(Succeed())
 			Expect(deploySyncDeployment(mainNamespace, deploymentTwo, spcAzureSync)).To(Succeed())
-			env.WaitForLabeledPodsReady(mainNamespace, "busybox", 90*time.Second)
+			env.WaitForDeploymentRollout(mainNamespace, deploymentOne)
+			env.WaitForDeploymentRollout(mainNamespace, deploymentTwo)
 		})
 
 		It("reads mounted content, synced secrets, env vars, and owner references", func() {
@@ -181,7 +187,7 @@ var _ = Describe("Azure provider e2e", Ordered, func() {
 		It("deploys cluster- and namespace-scoped SPCs and a busybox deployment in test-ns", func() {
 			Expect(deployNamespacedSecretProviderClasses(mainNamespace, testNS, clientID, keyVaultName, az.TenantID, batsSecretName)).To(Succeed())
 			Expect(deploySyncDeployment(testNS, deploymentOne, spcAzureSync)).To(Succeed())
-			env.WaitForLabeledPodsReady(testNS, "busybox", 60*time.Second)
+			env.WaitForDeploymentRollout(testNS, deploymentOne)
 		})
 
 		It("reads mounted content, synced secrets, env vars, and owner references in test-ns", func() {
@@ -225,7 +231,7 @@ var _ = Describe("Azure provider e2e", Ordered, func() {
 
 	Context("multiple SecretProviderClass", func() {
 		It("deploys multiple SecretProviderClasses", func() {
-			Expect(deployMultipleSecretProviderClasses(mainNamespace, clientID, keyVaultName, az.TenantID, batsSecretName)).To(Succeed())
+			Expect(deployMultipleSecretProviderClasses(mainNamespace, clientID, keyVaultName, az.TenantID, []string{batsSecretName, secondSecretName})).To(Succeed())
 			for _, name := range []string{"azure-spc-0", "azure-spc-1"} {
 				providerName, err := env.SecretProviderClassProvider(mainNamespace, name)
 				Expect(err).NotTo(HaveOccurred())
@@ -239,23 +245,22 @@ var _ = Describe("Azure provider e2e", Ordered, func() {
 		})
 
 		It("reads mounted content, synced secrets, and env vars from both volumes", func() {
-			for _, mount := range []string{"/mnt/secrets-store-0/secretalias", "/mnt/secrets-store-1/secretalias"} {
+			for i, expectedValue := range []string{batsSecretValue, secondSecretValue} {
+				mount := fmt.Sprintf("/mnt/secrets-store-%d/secretalias", i)
 				got, err := env.ReadMountedFile(mainNamespace, multiplePodName, mount)
 				Expect(err).NotTo(HaveOccurred())
-				Expect(got).To(Equal(batsSecretValue))
-			}
+				Expect(got).To(Equal(expectedValue), "unexpected content in %s", mount)
 
-			for _, secretName := range []string{"foosecret-0", "foosecret-1"} {
+				secretName := fmt.Sprintf("foosecret-%d", i)
 				username, err := env.GetSecretKey(mainNamespace, secretName, "username")
 				Expect(err).NotTo(HaveOccurred())
-				Expect(username).To(Equal(batsSecretValue))
+				Expect(username).To(Equal(expectedValue), "unexpected content in Secret %s", secretName)
 				env.WaitForSecretOwnerCount(mainNamespace, secretName, 1)
-			}
 
-			for _, envName := range []string{"SECRET_USERNAME_0", "SECRET_USERNAME_1"} {
+				envName := fmt.Sprintf("SECRET_USERNAME_%d", i)
 				envVal, err := env.PodEnvValue(mainNamespace, multiplePodName, envName)
 				Expect(err).NotTo(HaveOccurred())
-				Expect(envVal).To(Equal(batsSecretValue))
+				Expect(envVal).To(Equal(expectedValue), "unexpected content in %s", envName)
 			}
 		})
 	})
@@ -263,16 +268,40 @@ var _ = Describe("Azure provider e2e", Ordered, func() {
 	Context("operator secret rotation against the real Key Vault", func() {
 		BeforeAll(func() {
 			By("deploying a pod for the rotation assertion")
-			Expect(deploySecretProviderClass(mainNamespace, spcAzure, clientID, keyVaultName, az.TenantID, batsSecretName)).To(Succeed())
-			Expect(createInlineVolumePod(mainNamespace, rotationPodName, spcAzure)).To(Succeed())
+			Expect(deploySyncSecretProviderClass(mainNamespace, rotationSPCName, clientID, keyVaultName, az.TenantID, batsSecretName, rotationSyncedSecretName, syncLabelValue)).To(Succeed())
+			Expect(createInlineVolumePod(mainNamespace, rotationPodName, rotationSPCName)).To(Succeed())
 			env.WaitPodReady(mainNamespace, rotationPodName)
-			got, err := env.ReadMountedFile(mainNamespace, rotationPodName, "/mnt/secrets-store/"+batsSecretName)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(got).To(Equal(rotationSecretVal))
+			waitForRotationValues(mainNamespace, rotationPodName, rotationSecretVal)
 		})
 
-		It("reflects an updated Key Vault secret value in the mounted file within minimumRefreshAge", func() {
-			rotateAndAssert(mainNamespace, rotationPodName, keyVaultName, batsSecretName, &rotationSecretVal)
+		It("rotates both the mounted file and synced Kubernetes Secret", func() {
+			configureRotation(opv1.SecretRotationCustom)
+			By("updating the real Key Vault secret's value")
+			rotationSecretVal += "-rotated"
+			Expect(az.KeyVaultSecretSet(keyVaultName, batsSecretName, rotationSecretVal)).To(Succeed())
+			waitForRotationValues(mainNamespace, rotationPodName, rotationSecretVal)
+		})
+
+		It("preserves mounted and synced values while rotation is disabled, then catches up when re-enabled", func() {
+			configureRotation(opv1.SecretRotationNone)
+			waitForRotationValues(mainNamespace, rotationPodName, rotationSecretVal)
+
+			By("changing Key Vault while rotation is disabled")
+			newValue := rotationSecretVal + "-while-disabled"
+			Expect(az.KeyVaultSecretSet(keyVaultName, batsSecretName, newValue)).To(Succeed())
+
+			By("checking both values remain unchanged beyond the refresh interval and default kubelet sync period")
+			Consistently(func() (map[string]string, error) {
+				return readRotationValues(mainNamespace, rotationPodName)
+			}, 2*time.Minute, common.PollInterval).Should(Equal(map[string]string{
+				"mounted": rotationSecretVal,
+				"synced":  rotationSecretVal,
+			}))
+
+			By("re-enabling rotation without recreating the workload pod")
+			configureRotation(opv1.SecretRotationCustom)
+			waitForRotationValues(mainNamespace, rotationPodName, newValue)
+			rotationSecretVal = newValue
 		})
 	})
 })

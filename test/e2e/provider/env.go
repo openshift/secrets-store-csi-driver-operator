@@ -35,6 +35,12 @@ type Env struct {
 
 // NewEnv builds clients from cfg and applies package defaults.
 func NewEnv(cfg *rest.Config) (*Env, error) {
+	// Bound all requests, including discovery and helpers used inside Eventually.
+	// An Eventually timeout cannot interrupt a blocked API call.
+	cfg = rest.CopyConfig(cfg)
+	if cfg.Timeout <= 0 || cfg.Timeout > common.APICallTimeout {
+		cfg.Timeout = common.APICallTimeout
+	}
 	dynamicClient, err := dynamic.NewForConfig(cfg)
 	if err != nil {
 		return nil, err

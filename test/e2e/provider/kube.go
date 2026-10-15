@@ -565,23 +565,21 @@ func (e *Env) WaitPodReady(namespace, podName string) {
 	}, common.PollTimeout, common.PollInterval).Should(BeTrue(), "pod %s/%s did not become Ready", namespace, podName)
 }
 
-// WaitForLabeledPodsReady waits until all pods with app=<label> are Ready.
-func (e *Env) WaitForLabeledPodsReady(namespace, label string, timeout time.Duration) {
+// WaitForDeploymentRollout waits for the current generation and all desired replicas.
+func (e *Env) WaitForDeploymentRollout(namespace, name string) {
 	Eventually(func() (bool, error) {
-		pods, err := e.Kube.CoreV1().Pods(namespace).List(context.Background(), metav1.ListOptions{LabelSelector: "app=" + label})
+		ctx, cancel := e.WithAPITimeout()
+		defer cancel()
+		deployment, err := e.Kube.AppsV1().Deployments(namespace).Get(ctx, name, metav1.GetOptions{})
 		if err != nil {
 			return false, err
 		}
-		if len(pods.Items) == 0 {
-			return false, nil
-		}
-		for _, pod := range pods.Items {
-			if !IsPodReady(&pod) {
-				return false, nil
-			}
-		}
-		return true, nil
-	}, timeout, common.PollInterval).Should(BeTrue(), "pods with label app=%s in %s did not become Ready", label, namespace)
+		desired := ptr.Deref(deployment.Spec.Replicas, 1)
+		return desired > 0 && deployment.Status.ObservedGeneration >= deployment.Generation &&
+			deployment.Status.Replicas == desired &&
+			deployment.Status.UpdatedReplicas == desired &&
+			deployment.Status.AvailableReplicas == desired, nil
+	}, common.PollTimeout, common.PollInterval).Should(BeTrue(), "Deployment %s/%s did not finish rolling out", namespace, name)
 }
 
 // WaitForPodDeleted polls until podName is gone from namespace.
@@ -635,11 +633,13 @@ func (e *Env) WaitProviderReady(namespace, appLabel string) {
 // WaitForDaemonSetRollout polls until the node DaemonSet has rolled out.
 func (e *Env) WaitForDaemonSetRollout() {
 	Eventually(func() (bool, error) {
-		ds, err := e.Kube.AppsV1().DaemonSets(common.OperatorNamespace).Get(context.Background(), common.DaemonSetName, metav1.GetOptions{})
+		ctx, cancel := e.WithAPITimeout()
+		defer cancel()
+		ds, err := e.Kube.AppsV1().DaemonSets(common.OperatorNamespace).Get(ctx, common.DaemonSetName, metav1.GetOptions{})
 		if err != nil {
 			return false, err
 		}
-		return ds.Status.DesiredNumberScheduled > 0 &&
+		return ds.Status.ObservedGeneration >= ds.Generation && ds.Status.DesiredNumberScheduled > 0 &&
 			ds.Status.UpdatedNumberScheduled == ds.Status.DesiredNumberScheduled &&
 			ds.Status.NumberAvailable == ds.Status.DesiredNumberScheduled, nil
 	}, common.PollTimeout, common.PollInterval).Should(BeTrue(), "DaemonSet %s/%s did not finish rolling out", common.OperatorNamespace, common.DaemonSetName)

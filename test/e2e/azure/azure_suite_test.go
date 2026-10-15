@@ -7,7 +7,6 @@
 package azure
 
 import (
-	"context"
 	"fmt"
 	"math/rand/v2"
 	"os"
@@ -64,9 +63,12 @@ var _ = BeforeSuite(func() {
 	env, err = provider.NewEnv(restConfig)
 	Expect(err).NotTo(HaveOccurred(), "unable to build provider e2e environment")
 
-	driver, err := env.ClusterCSIDriver.Get(context.Background(), common.DriverName, metav1.GetOptions{})
+	ctx, cancel := env.WithAPITimeout()
+	defer cancel()
+	driver, err := env.ClusterCSIDriver.Get(ctx, common.DriverName, metav1.GetOptions{})
 	Expect(err).NotTo(HaveOccurred(), "ClusterCSIDriver %q must already exist -- deploy the operator before running this suite", common.DriverName)
 	originalDriverConfig = *driver.Spec.DriverConfig.DeepCopy()
+	DeferCleanup(restoreDriverConfig)
 
 	resourceGroup, err = getAzureResourceGroup()
 	Expect(err).NotTo(HaveOccurred(), "unable to resolve the cluster's Azure resource group")
@@ -78,10 +80,6 @@ var _ = BeforeSuite(func() {
 	Expect(err).NotTo(HaveOccurred(), "unable to resolve the cluster's OIDC issuer")
 
 	GinkgoWriter.Printf("resourceGroup=%s location=%s oidcIssuer=%s tenantID=%s runSuffix=%s\n", resourceGroup, location, oidcIssuer, az.TenantID, runSuffix)
-})
-
-var _ = AfterSuite(func() {
-	restoreDriverConfig()
 })
 
 func getAzureResourceGroup() (string, error) {

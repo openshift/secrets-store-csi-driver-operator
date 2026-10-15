@@ -58,13 +58,13 @@ func createInlineVolumePod(namespace, podName, spcName string) error {
 	})
 }
 
-func deploySyncSecretProviderClass(namespace, spcName, clientID, keyvaultName, tenantID, secretName, labelValue string) error {
+func deploySyncSecretProviderClass(namespace, spcName, clientID, keyvaultName, tenantID, secretName, syncedSecretName, labelValue string) error {
 	return env.CreateSecretProviderClass(provider.NewSecretProviderClass(
 		namespace,
 		spcName,
 		"azure",
 		azureSPCParameters(clientID, keyvaultName, tenantID, secretName, "secretalias"),
-		provider.SyncSecretObject("foosecret", "secretalias", "username", "environment", labelValue),
+		provider.SyncSecretObject(syncedSecretName, "secretalias", "username", "environment", labelValue),
 	))
 }
 
@@ -78,8 +78,9 @@ func deployNamespacedSecretProviderClasses(mainNamespace, testNS, clientID, keyv
 	return env.CreateSecretProviderClass(provider.NewSecretProviderClass(testNS, "azure-sync", "azure", params, syncObj))
 }
 
-func deployMultipleSecretProviderClasses(namespace, clientID, keyvaultName, tenantID, secretName string) error {
-	for _, name := range []string{"azure-spc-0", "azure-spc-1"} {
+func deployMultipleSecretProviderClasses(namespace, clientID, keyvaultName, tenantID string, secretNames []string) error {
+	for i, secretName := range secretNames {
+		name := fmt.Sprintf("azure-spc-%d", i)
 		suffix := strings.TrimPrefix(name, "azure-spc-")
 		if err := env.CreateSecretProviderClass(provider.NewSecretProviderClass(
 			namespace,
