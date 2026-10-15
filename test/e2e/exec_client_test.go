@@ -173,3 +173,33 @@ func curlExitCode(err error) int {
 	}
 	return -1
 }
+
+// execInOperatorPod runs command in the operator pod through the exec API.
+// This is used for TLS wire checks where curling localhost:8443 from inside
+// the operator pod bypasses NetworkPolicy restrictions that would otherwise
+// block external traffic to the metrics endpoint.
+func execInOperatorPod(ctx context.Context, podName string, command []string) (stdout, stderr string, err error) {
+	req := kubeClient.CoreV1().RESTClient().Post().
+		Resource("pods").
+		Name(podName).
+		Namespace(operatorNamespace).
+		SubResource("exec").
+		VersionedParams(&corev1.PodExecOptions{
+			Container: operatorContainerName,
+			Command:   command,
+			Stdout:    true,
+			Stderr:    true,
+		}, scheme.ParameterCodec)
+
+	executor, err := remotecommand.NewSPDYExecutor(restConfig, "POST", req.URL())
+	if err != nil {
+		return "", "", fmt.Errorf("failed to build SPDY executor for operator pod %s: %w", podName, err)
+	}
+
+	var stdoutBuf, stderrBuf bytes.Buffer
+	err = executor.StreamWithContext(ctx, remotecommand.StreamOptions{
+		Stdout: &stdoutBuf,
+		Stderr: &stderrBuf,
+	})
+	return stdoutBuf.String(), stderrBuf.String(), err
+}

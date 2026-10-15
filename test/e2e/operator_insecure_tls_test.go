@@ -10,12 +10,15 @@ import (
 )
 
 // dialTLS intentionally disables certificate verification (curl -k)
-// because the OpenShift service-CA is not mounted in the exec-client pod.
-// Kept in this file so Snyk can exclude just this helper.
+// because the OpenShift service-CA is not mounted in the operator pod's
+// default filesystem. Kept in this file so Snyk can exclude just this helper.
 //
-// It runs curl inside execClientPodName (see exec_client_test.go) rather
-// than dialing from the Ginkgo process directly, since Ginkgo has no route
-// to the target cluster's pod/Service network.
+// It runs curl inside the operator pod itself (via execInOperatorPod),
+// targeting localhost:8443. This bypasses NetworkPolicy restrictions that
+// would otherwise block traffic from external pods to the operator's
+// metrics endpoint -- the default NetworkPolicy only allows ingress from
+// openshift-monitoring, not from test pods. Using localhost also avoids
+// any Service/DNS resolution or OVN ACL convergence issues.
 
 // curlTLSVersionFlags maps a tls.VersionTLS* min/max pair to curl's
 // --tlsv1.x/--tls-max flags, mirroring the crypto/tls MinVersion/MaxVersion
@@ -36,7 +39,9 @@ func curlTLSVersionFlags(minVersion, maxVersion uint16) ([]string, error) {
 	return []string{"--tlsv" + minStr, "--tls-max", maxStr}, nil
 }
 
-func dialTLS(ctx context.Context, addr string, minVersion, maxVersion uint16) error {
+// dialTLS execs curl inside the operator pod to verify the TLS endpoint.
+// Using localhost:8443 bypasses NetworkPolicy restrictions.
+func dialTLS(ctx context.Context, podName string, minVersion, maxVersion uint16) error {
 	verFlags, err := curlTLSVersionFlags(minVersion, maxVersion)
 	if err != nil {
 		return err
@@ -48,32 +53,29 @@ func dialTLS(ctx context.Context, addr string, minVersion, maxVersion uint16) er
 	// -o discards the body and -w prints just the status code: this check
 	// only cares that the TLS handshake completed, not the HTTP outcome
 	// (curl exits 0 on any completed HTTP response, 401/403 included).
-	args = append(args, "-o", "/dev/null", "-w", "%{http_code}", "https://"+addr+"/metrics")
+	// Use localhost:8443 to bypass NetworkPolicy restrictions.
+	args = append(args, "-o", "/dev/null", "-w", "%{http_code}", "https://localhost:8443/metrics")
 
-	stdout, stderr, err := execInClientPod(ctx, args)
+	stdout, stderr, err := execInOperatorPod(ctx, podName, args)
 	if err != nil {
-		return fmt.Errorf("curl https://%s failed (exit=%d) stdout=%q stderr=%q: %w", addr, curlExitCode(err), stdout, stderr, err)
+		return fmt.Errorf("curl https://localhost:8443/metrics in pod %s failed (exit=%d) stdout=%q stderr=%q: %w", podName, curlExitCode(err), stdout, stderr, err)
 	}
 	return nil
 }
 
-// waitForDialTLS retries dialTLS for wireRetryTimeout. A freshly created (or
-// just-restarted) pod's NetworkPolicy ingress ACLs can take a moment to
-// converge on OVN-Kubernetes, which can otherwise show up as a flaky
-// failure on the very first attempt. Every other cluster-state wait in
-// this suite already retries (see pollInterval/pollTimeout in
-// helpers_test.go); this wire check is wrapped the same way for
-// consistency and to tolerate that convergence window.
-func waitForDialTLS(ctx context.Context, addr string, minVersion, maxVersion uint16) error {
+// waitForDialTLS retries dialTLS for wireRetryTimeout. A freshly restarted
+// operator pod may take a moment for its metrics server to start serving;
+// this retry loop tolerates that startup delay.
+func waitForDialTLS(ctx context.Context, podName string, minVersion, maxVersion uint16) error {
 	var lastErr error
 	err := wait.PollUntilContextTimeout(ctx, pollInterval, wireRetryTimeout, true, func(ctx context.Context) (bool, error) {
-		if lastErr = dialTLS(ctx, addr, minVersion, maxVersion); lastErr != nil {
+		if lastErr = dialTLS(ctx, podName, minVersion, maxVersion); lastErr != nil {
 			return false, nil
 		}
 		return true, nil
 	})
 	if err != nil {
-		return fmt.Errorf("failed to dial %s within %s: %w", addr, wireRetryTimeout, lastErr)
+		return fmt.Errorf("failed to dial localhost:8443 in pod %s within %s: %w", podName, wireRetryTimeout, lastErr)
 	}
 	return nil
 }

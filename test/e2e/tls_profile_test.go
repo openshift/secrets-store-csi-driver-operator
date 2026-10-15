@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
-	"net"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -91,7 +90,10 @@ var _ = Describe("TLS profile adherence", Label("tls"), Ordered, func() {
 	BeforeAll(func() {
 		ctx = context.Background()
 
-		Expect(ensureExecClientPod(ctx)).To(Succeed(), "create exec-client pod for in-cluster wire checks")
+		// The exec-client pod is used for E1 operand plaintext HTTP checks,
+		// which target the CSI driver pod (not the operator). Operator TLS
+		// checks now exec directly into the operator pod using localhost.
+		Expect(ensureExecClientPod(ctx)).To(Succeed(), "create exec-client pod for operand wire checks")
 
 		var err error
 		original, err = getClusterAPIServerTLSConfig(ctx)
@@ -585,32 +587,26 @@ func runTLSScenario(ctx context.Context, tc tlsScenario, lastUID *string) {
 		}
 	}
 
-	// Dial the metrics Service's in-cluster DNS name rather than the pod IP
-	// directly: this is the same path a real client (e.g. Prometheus) would
-	// use, and avoids depending on the NetworkPolicy/OVN ACL state of one
-	// specific pod IP after a (re)start (see operatorMetricsFQDN). This FQDN
-	// is only resolvable from inside the cluster, which is why dialTLS/
-	// waitForScrapeOperatorMetrics exec curl inside execClientPodName
-	// (see exec_client_test.go) instead of dialing straight from Ginkgo,
-	// which runs outside the cluster's pod/Service network entirely.
-	addr := net.JoinHostPort(operatorMetricsFQDN(), fmt.Sprintf("%d", operatorMetricsServicePort))
+	// Wire checks exec curl inside the operator pod itself, targeting
+	// localhost:8443. This bypasses NetworkPolicy restrictions (the default
+	// policy only allows ingress from openshift-monitoring) and avoids
+	// Service DNS resolution or OVN ACL convergence issues. The exec-client
+	// pod is still used for operand plaintext checks (E1) which target a
+	// different pod.
 	switch tc.wire {
 	case wireHTTPSOK:
-		// Retried: a freshly (re)started pod's NetworkPolicy ingress ACLs can
-		// take a moment to converge on OVN-Kubernetes, which otherwise shows
-		// up as a flaky failure on the very first attempt. If the whole
-		// retry budget is exhausted, dump network diagnostics before failing
-		// so the artifacts show whether this was slow convergence or a hard
-		// block (see dumpNetworkDiagnostics).
-		if dialErr := waitForDialTLS(ctx, addr, tls.VersionTLS12, tls.VersionTLS13); dialErr != nil {
+		// Retried: a freshly restarted operator pod may take a moment for
+		// its metrics server to start serving. If the retry budget is
+		// exhausted, dump network diagnostics before failing.
+		if dialErr := waitForDialTLS(ctx, pod.Name, tls.VersionTLS12, tls.VersionTLS13); dialErr != nil {
 			dumpNetworkDiagnostics(ctx, pod)
-			Fail(fmt.Sprintf("HTTPS dial %s: %v", addr, dialErr))
+			Fail(fmt.Sprintf("HTTPS dial localhost:8443 in pod %s: %v", pod.Name, dialErr))
 		}
 	case wireModernTLS13Only:
-		Expect(waitForDialTLS(ctx, addr, tls.VersionTLS13, tls.VersionTLS13)).To(Succeed(), "TLS1.3 dial should succeed")
+		Expect(waitForDialTLS(ctx, pod.Name, tls.VersionTLS13, tls.VersionTLS13)).To(Succeed(), "TLS1.3 dial should succeed")
 		// Expected to fail (protocol version rejection, not a network drop):
 		// a single attempt is correct here, retrying would just waste time.
-		Expect(dialTLS(ctx, addr, tls.VersionTLS12, tls.VersionTLS12)).NotTo(Succeed(), "TLS1.2 dial should fail under Modern profile")
+		Expect(dialTLS(ctx, pod.Name, tls.VersionTLS12, tls.VersionTLS12)).NotTo(Succeed(), "TLS1.2 dial should fail under Modern profile")
 	case wirePlaintextOperand:
 		// handled in dedicated E1 It
 	}
