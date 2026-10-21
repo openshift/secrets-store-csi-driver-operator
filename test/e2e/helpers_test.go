@@ -17,6 +17,10 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 )
 
+// pollInterval is the shared suite interval. Upstream moved it to
+// test/e2e/common; the TLS helpers still use this name.
+const pollInterval = common.PollInterval
+
 // withAPITimeout returns a context bounded by common.APICallTimeout. Callers must
 // defer the returned cancel func.
 func withAPITimeout() (context.Context, context.CancelFunc) {
