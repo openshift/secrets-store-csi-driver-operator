@@ -13,6 +13,7 @@ import (
 	. "github.com/onsi/gomega"
 
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 )
@@ -28,13 +29,11 @@ const (
 	// confirmed via "Back-off restarting failed container" pod events),
 	// throttling how soon the container comes back up. In a suite that
 	// flips the TLS profile/adherence repeatedly within a few minutes (the
-	// scenario matrix below, plus D1-D5), later restarts reliably ride the
-	// full 300s cap. A timeout here now fails the scenario outright (no
-	// silent fallback -- see runTLSScenario), so this needs real headroom
-	// above that 300s floor, not just enough to barely clear it: the
-	// operator's own watch/reconcile latency plus container init/Ready on
-	// a loaded or compact/FIPS-style CI node still has to fit in what's
-	// left after the mandatory backoff wait.
+	// scenario matrix below, plus D1-D5). Backoff is per pod, so
+	// replaceOperatorPod deletes the pod after each observed restart and
+	// the Deployment creates a new one at the 10s floor. This timeout is
+	// for a single restart on that fresh pod: watch latency plus container
+	// init/Ready on a loaded CI node, with headroom past one backoff step.
 	operatorRestartTimeout = 10 * time.Minute
 	wireDialTimeout        = 15 * time.Second
 	// wireRetryTimeout bounds retries of raw TCP/TLS wire checks (dialTLS,
@@ -184,6 +183,35 @@ func waitForOperatorRestart(ctx context.Context, previousRestartKey string) (*op
 		return nil, fmt.Errorf("failed to wait for operator restart (previousRestartKey=%s, lastRestartKey=%s, lastErr=%v): %w", previousRestartKey, lastKey, lastErr, err)
 	}
 	return ready, nil
+}
+
+// replaceOperatorPod deletes the operator pod and waits for the Deployment to
+// bring up a different ready pod. The TLS watcher restarts by exiting the
+// process, and kubelet counts that as a container crash. Crash backoff is
+// stored on the pod (10s, 20s, 40s, ... capped at 300s) and does not reset
+// until the container has been running for 10 minutes, which this suite never
+// allows. A new pod starts the sequence over.
+func replaceOperatorPod(ctx context.Context, name string) (*operatorPod, error) {
+	err := kubeClient.CoreV1().Pods(operatorNamespace).Delete(ctx, name, metav1.DeleteOptions{})
+	if err != nil && !apierrors.IsNotFound(err) {
+		return nil, fmt.Errorf("delete operator pod %s: %w", name, err)
+	}
+	var replaced *operatorPod
+	err = wait.PollUntilContextTimeout(ctx, pollInterval, operatorTimeout, true, func(ctx context.Context) (bool, error) {
+		pod, getErr := getOperatorPod(ctx)
+		if getErr != nil {
+			return false, nil
+		}
+		if pod.Name == name || pod.IP == "" {
+			return false, nil
+		}
+		replaced = pod
+		return true, nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("replacement operator pod did not become ready after deleting %s: %w", name, err)
+	}
+	return replaced, nil
 }
 
 // waitForServingCertSecret waits until service-ca has written the metrics

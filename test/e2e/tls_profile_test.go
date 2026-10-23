@@ -116,7 +116,12 @@ var _ = Describe("TLS profile adherence", Label("tls"), Ordered, func() {
 			Expect(rerr).NotTo(HaveOccurred(), "baseline Controllercmd default log not found; operator restart failed")
 			Expect(waitForOperatorLogContains(ctx, restarted.Name, "leaving --config as-is")).To(Succeed(),
 				"baseline Controllercmd default log after restart")
+			pod = restarted
 		}
+		// The probe above may have exited the operator. Replace the pod so the
+		// scenario matrix starts with kubelet restart backoff at the floor.
+		_, err = replaceOperatorPod(ctx, pod.Name)
+		Expect(err).NotTo(HaveOccurred(), "reset operator restart backoff before TLS scenarios")
 	})
 
 	AfterAll(func() {
@@ -274,7 +279,9 @@ var _ = Describe("TLS profile adherence", Label("tls"), Ordered, func() {
 		after, err := waitForOperatorRestart(ctx, mid.RestartKey)
 		Expect(err).NotTo(HaveOccurred(), "restart after Modern")
 		Expect(waitForOperatorLogContains(ctx, after.Name, "minTLSVersion=VersionTLS13")).To(Succeed())
-		lastUID = after.UID
+		replaced, err := replaceOperatorPod(ctx, after.Name)
+		Expect(err).NotTo(HaveOccurred(), "D1: reset operator restart backoff")
+		lastUID = replaced.UID
 	})
 
 	It("D2 Legacy to Strict restarts and applies", func() {
@@ -293,7 +300,9 @@ var _ = Describe("TLS profile adherence", Label("tls"), Ordered, func() {
 		strictPod, err := waitForOperatorRestart(ctx, legacyPod.RestartKey)
 		Expect(err).NotTo(HaveOccurred(), "restart Legacy→Strict")
 		Expect(waitForOperatorLogContains(ctx, strictPod.Name, "Applied cluster TLS profile", "minTLSVersion=VersionTLS12")).To(Succeed())
-		lastUID = strictPod.UID
+		replaced, err := replaceOperatorPod(ctx, strictPod.Name)
+		Expect(err).NotTo(HaveOccurred(), "D2: reset operator restart backoff")
+		lastUID = replaced.UID
 	})
 
 	It("D3 Strict to Legacy restarts and defaults", func() {
@@ -310,7 +319,9 @@ var _ = Describe("TLS profile adherence", Label("tls"), Ordered, func() {
 		legacyPod, err := waitForOperatorRestart(ctx, strictPod.RestartKey)
 		Expect(err).NotTo(HaveOccurred(), "restart Strict→Legacy")
 		Expect(waitForOperatorLogContains(ctx, legacyPod.Name, "leaving --config as-is")).To(Succeed())
-		lastUID = legacyPod.UID
+		replaced, err := replaceOperatorPod(ctx, legacyPod.Name)
+		Expect(err).NotTo(HaveOccurred(), "D3: reset operator restart backoff")
+		lastUID = replaced.UID
 	})
 
 	It("D4 unrelated APIServer field does not restart", func() {
@@ -343,7 +354,9 @@ var _ = Describe("TLS profile adherence", Label("tls"), Ordered, func() {
 		after, err := waitForOperatorRestart(ctx, before.RestartKey)
 		Expect(err).NotTo(HaveOccurred(), "operator did not restart after serving-cert delete")
 		Expect(waitForOperatorLogContains(ctx, after.Name, "Using service-serving-cert provided certificates")).To(Succeed())
-		lastUID = after.UID
+		replaced, err := replaceOperatorPod(ctx, after.Name)
+		Expect(err).NotTo(HaveOccurred(), "D5: reset operator restart backoff")
+		lastUID = replaced.UID
 	})
 
 	It("E1 operand metrics :8095 is plaintext", func() {
@@ -610,6 +623,14 @@ func runTLSScenario(ctx context.Context, tc tlsScenario, lastUID *string) {
 		Expect(dialTLS(ctx, pod.Name, tls.VersionTLS12, tls.VersionTLS12)).NotTo(Succeed(), "TLS1.2 dial should fail under Modern profile")
 	case wirePlaintextOperand:
 		// handled in dedicated E1 It
+	}
+
+	if tc.expectRestart {
+		// Drop the pod that just exited so the next scenario is not stuck
+		// behind kubelet's per-pod crash backoff.
+		replaced, rerr := replaceOperatorPod(ctx, pod.Name)
+		Expect(rerr).NotTo(HaveOccurred(), "%s: reset operator restart backoff", tc.id)
+		pod = replaced
 	}
 
 	*lastUID = pod.UID
