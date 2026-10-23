@@ -21,11 +21,22 @@ import (
 // beforehand, so these preservation specs -- which assert the operator
 // never touches this field -- don't leak manually-patched audiences into
 // later runs.
+//
+// The read is retried because the operator recreates CSIDriver with
+// Delete+Create when the desired spec hash changes. A single Get lands
+// in that gap and returns NotFound.
 func patchLiveCSIDriverTokenRequests(audiences []string) {
-	ctx, cancel := withAPITimeout()
-	defer cancel()
-	driver, err := kubeClient.StorageV1().CSIDrivers().Get(ctx, common.DriverName, metav1.GetOptions{})
-	Expect(err).NotTo(HaveOccurred(), "failed to read CSIDriver %q before patching tokenRequests", common.DriverName)
+	var driver *storagev1.CSIDriver
+	Eventually(func() error {
+		ctx, cancel := withAPITimeout()
+		defer cancel()
+		got, err := kubeClient.StorageV1().CSIDrivers().Get(ctx, common.DriverName, metav1.GetOptions{})
+		if err != nil {
+			return err
+		}
+		driver = got
+		return nil
+	}, common.PollTimeout, common.PollInterval).Should(Succeed(), "failed to read CSIDriver %q before patching tokenRequests", common.DriverName)
 	original := driver.Spec.TokenRequests
 	DeferCleanup(setLiveCSIDriverTokenRequests, original)
 
