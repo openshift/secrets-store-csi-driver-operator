@@ -339,6 +339,7 @@ var _ = Describe("TLS profile adherence", Label("tls"), Ordered, func() {
 			Skip(fmt.Sprintf("serving cert secret %s not found", servingCertSecretName))
 		}
 		Expect(err).NotTo(HaveOccurred())
+		Expect(waitForServingCertSecret(ctx, servingCertSecretName)).To(Succeed(), "service-ca did not recreate the serving cert secret")
 		after, err := waitForOperatorRestart(ctx, before.RestartKey)
 		Expect(err).NotTo(HaveOccurred(), "operator did not restart after serving-cert delete")
 		Expect(waitForOperatorLogContains(ctx, after.Name, "Using service-serving-cert provided certificates")).To(Succeed())

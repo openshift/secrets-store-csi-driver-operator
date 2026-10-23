@@ -161,11 +161,16 @@ func getOperatorPod(ctx context.Context) (*operatorPod, error) {
 
 func waitForOperatorRestart(ctx context.Context, previousRestartKey string) (*operatorPod, error) {
 	var ready *operatorPod
+	var lastErr error
+	lastKey := previousRestartKey
 	err := wait.PollUntilContextTimeout(ctx, pollInterval, operatorRestartTimeout, true, func(ctx context.Context) (bool, error) {
-		pod, err := getOperatorPod(ctx)
-		if err != nil {
+		pod, getErr := getOperatorPod(ctx)
+		if getErr != nil {
+			lastErr = getErr
 			return false, nil
 		}
+		lastErr = nil
+		lastKey = pod.RestartKey
 		if pod.RestartKey == "" || (previousRestartKey != "" && pod.RestartKey == previousRestartKey) {
 			return false, nil
 		}
@@ -176,9 +181,29 @@ func waitForOperatorRestart(ctx context.Context, previousRestartKey string) (*op
 		return true, nil
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to wait for operator restart (still restartKey=%s): %w", previousRestartKey, err)
+		return nil, fmt.Errorf("failed to wait for operator restart (previousRestartKey=%s, lastRestartKey=%s, lastErr=%v): %w", previousRestartKey, lastKey, lastErr, err)
 	}
 	return ready, nil
+}
+
+// waitForServingCertSecret waits until service-ca has written the metrics
+// serving Secret again. terminate-on-files exits only after that new
+// certificate is mounted, so a missing Secret must fail on its own.
+func waitForServingCertSecret(ctx context.Context, name string) error {
+	var lastErr error
+	err := wait.PollUntilContextTimeout(ctx, pollInterval, operatorTimeout, true, func(ctx context.Context) (bool, error) {
+		_, getErr := kubeClient.CoreV1().Secrets(operatorNamespace).Get(ctx, name, metav1.GetOptions{})
+		if getErr != nil {
+			lastErr = getErr
+			return false, nil
+		}
+		lastErr = nil
+		return true, nil
+	})
+	if err != nil {
+		return fmt.Errorf("serving cert secret %s was not recreated (lastErr=%v): %w", name, lastErr, err)
+	}
+	return nil
 }
 
 // assertOperatorRestartKeyStable asserts the operator container does not
