@@ -12,6 +12,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	"github.com/openshift/secrets-store-csi-driver-operator/test/e2e/common"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -19,7 +20,6 @@ import (
 )
 
 const (
-	operatorTimeout = 5 * time.Minute
 	// operatorRestartTimeout bounds waitForOperatorRestart specifically. The
 	// operator reconfigures its HTTPS metrics listener by exiting the
 	// process (RequestShutdown/os.Exit) and relying on kubelet to restart
@@ -63,7 +63,7 @@ const (
 // to routing/ACLs on that one pod IP from a problem with the operator's TLS
 // listener itself.
 func operatorMetricsFQDN() string {
-	return fmt.Sprintf("%s.%s.svc.cluster.local", operatorMetricsServiceName, operatorNamespace)
+	return fmt.Sprintf("%s.%s.svc.cluster.local", operatorMetricsServiceName, common.OperatorNamespace)
 }
 
 type operatorPod struct {
@@ -81,7 +81,7 @@ type operatorPod struct {
 
 func waitForOperatorReady(ctx context.Context) (*operatorPod, error) {
 	var ready *operatorPod
-	err := wait.PollUntilContextTimeout(ctx, pollInterval, operatorTimeout, true, func(ctx context.Context) (bool, error) {
+	err := wait.PollUntilContextTimeout(ctx, common.PollInterval, common.PollTimeout, true, func(ctx context.Context) (bool, error) {
 		pod, err := getOperatorPod(ctx)
 		if err != nil {
 			return false, nil
@@ -99,7 +99,7 @@ func waitForOperatorReady(ctx context.Context) (*operatorPod, error) {
 }
 
 func getOperatorPod(ctx context.Context) (*operatorPod, error) {
-	pods, err := kubeClient.CoreV1().Pods(operatorNamespace).List(ctx, metav1.ListOptions{
+	pods, err := kubeClient.CoreV1().Pods(common.OperatorNamespace).List(ctx, metav1.ListOptions{
 		LabelSelector: "app=" + operatorDeploymentName,
 	})
 	if err != nil {
@@ -125,7 +125,7 @@ func getOperatorPod(ctx context.Context) (*operatorPod, error) {
 		}
 	}
 	if len(candidates) == 0 {
-		return nil, fmt.Errorf("failed to find ready operator pod in %s", operatorNamespace)
+		return nil, fmt.Errorf("failed to find ready operator pod in %s", common.OperatorNamespace)
 	}
 	// Prefer the newest ready pod (UID changes after restart).
 	newest := candidates[0]
@@ -162,7 +162,7 @@ func waitForOperatorRestart(ctx context.Context, previousRestartKey string) (*op
 	var ready *operatorPod
 	var lastErr error
 	lastKey := previousRestartKey
-	err := wait.PollUntilContextTimeout(ctx, pollInterval, operatorRestartTimeout, true, func(ctx context.Context) (bool, error) {
+	err := wait.PollUntilContextTimeout(ctx, common.PollInterval, operatorRestartTimeout, true, func(ctx context.Context) (bool, error) {
 		pod, getErr := getOperatorPod(ctx)
 		if getErr != nil {
 			lastErr = getErr
@@ -192,12 +192,12 @@ func waitForOperatorRestart(ctx context.Context, previousRestartKey string) (*op
 // until the container has been running for 10 minutes, which this suite never
 // allows. A new pod starts the sequence over.
 func replaceOperatorPod(ctx context.Context, name string) (*operatorPod, error) {
-	err := kubeClient.CoreV1().Pods(operatorNamespace).Delete(ctx, name, metav1.DeleteOptions{})
+	err := kubeClient.CoreV1().Pods(common.OperatorNamespace).Delete(ctx, name, metav1.DeleteOptions{})
 	if err != nil && !apierrors.IsNotFound(err) {
 		return nil, fmt.Errorf("delete operator pod %s: %w", name, err)
 	}
 	var replaced *operatorPod
-	err = wait.PollUntilContextTimeout(ctx, pollInterval, operatorTimeout, true, func(ctx context.Context) (bool, error) {
+	err = wait.PollUntilContextTimeout(ctx, common.PollInterval, common.PollTimeout, true, func(ctx context.Context) (bool, error) {
 		pod, getErr := getOperatorPod(ctx)
 		if getErr != nil {
 			return false, nil
@@ -219,8 +219,8 @@ func replaceOperatorPod(ctx context.Context, name string) (*operatorPod, error) 
 // certificate is mounted, so a missing Secret must fail on its own.
 func waitForServingCertSecret(ctx context.Context, name string) error {
 	var lastErr error
-	err := wait.PollUntilContextTimeout(ctx, pollInterval, operatorTimeout, true, func(ctx context.Context) (bool, error) {
-		_, getErr := kubeClient.CoreV1().Secrets(operatorNamespace).Get(ctx, name, metav1.GetOptions{})
+	err := wait.PollUntilContextTimeout(ctx, common.PollInterval, common.PollTimeout, true, func(ctx context.Context) (bool, error) {
+		_, getErr := kubeClient.CoreV1().Secrets(common.OperatorNamespace).Get(ctx, name, metav1.GetOptions{})
 		if getErr != nil {
 			lastErr = getErr
 			return false, nil
@@ -247,13 +247,13 @@ func assertOperatorRestartKeyStable(ctx context.Context, restartKey string) {
 		select {
 		case <-ctx.Done():
 			Fail(fmt.Sprintf("context canceled while asserting stability: %v", ctx.Err()))
-		case <-time.After(pollInterval):
+		case <-time.After(common.PollInterval):
 		}
 	}
 }
 
-// dumpNetworkDiagnostics logs the NetworkPolicies in effect in
-// operatorNamespace, pod's node placement, its recent events, and the
+// dumpNetworkDiagnostics logs the NetworkPolicies in effect in the
+// operator namespace, pod's node placement, its recent events, and the
 // operator container's own logs. Call this right before failing a wire check
 // (dialTLS/assertPlaintextHTTP) that exhausted its
 // retry budget, so the resulting artifacts can distinguish a slow-converging
@@ -275,23 +275,23 @@ func dumpNetworkDiagnostics(ctx context.Context, pod *operatorPod) {
 		GinkgoWriter.Printf("[diagnostics] failed to get operator logs for pod %s: %v\n", pod.Name, err)
 	}
 
-	if nps, err := kubeClient.NetworkingV1().NetworkPolicies(operatorNamespace).List(ctx, metav1.ListOptions{}); err == nil {
+	if nps, err := kubeClient.NetworkingV1().NetworkPolicies(common.OperatorNamespace).List(ctx, metav1.ListOptions{}); err == nil {
 		for _, np := range nps.Items {
 			GinkgoWriter.Printf("[diagnostics] NetworkPolicy %s/%s podSelector=%v ingress=%+v\n",
 				np.Namespace, np.Name, np.Spec.PodSelector.MatchLabels, np.Spec.Ingress)
 		}
 	} else {
-		GinkgoWriter.Printf("[diagnostics] failed to list NetworkPolicies in %s: %v\n", operatorNamespace, err)
+		GinkgoWriter.Printf("[diagnostics] failed to list NetworkPolicies in %s: %v\n", common.OperatorNamespace, err)
 	}
 
-	if p, err := kubeClient.CoreV1().Pods(operatorNamespace).Get(ctx, pod.Name, metav1.GetOptions{}); err == nil {
+	if p, err := kubeClient.CoreV1().Pods(common.OperatorNamespace).Get(ctx, pod.Name, metav1.GetOptions{}); err == nil {
 		GinkgoWriter.Printf("[diagnostics] pod %s node=%s hostNetwork=%t phase=%s\n",
 			pod.Name, p.Spec.NodeName, p.Spec.HostNetwork, p.Status.Phase)
 	} else {
 		GinkgoWriter.Printf("[diagnostics] failed to get pod %s: %v\n", pod.Name, err)
 	}
 
-	events, err := kubeClient.CoreV1().Events(operatorNamespace).List(ctx, metav1.ListOptions{
+	events, err := kubeClient.CoreV1().Events(common.OperatorNamespace).List(ctx, metav1.ListOptions{
 		FieldSelector: fmt.Sprintf("involvedObject.name=%s", pod.Name),
 	})
 	if err != nil {
@@ -305,7 +305,7 @@ func dumpNetworkDiagnostics(ctx context.Context, pod *operatorPod) {
 }
 
 func operatorLogs(ctx context.Context, podName string) (content string, err error) {
-	req := kubeClient.CoreV1().Pods(operatorNamespace).GetLogs(podName, &corev1.PodLogOptions{
+	req := kubeClient.CoreV1().Pods(common.OperatorNamespace).GetLogs(podName, &corev1.PodLogOptions{
 		Container: operatorContainerName,
 	})
 	stream, err := req.Stream(ctx)
@@ -332,7 +332,7 @@ func operatorLogs(ctx context.Context, podName string) (content string, err erro
 // not spend its budget on a name that will never come back.
 func operatorPodForWireCheck(ctx context.Context, current *operatorPod) (*operatorPod, error) {
 	if current != nil && current.Name != "" {
-		pod, err := kubeClient.CoreV1().Pods(operatorNamespace).Get(ctx, current.Name, metav1.GetOptions{})
+		pod, err := kubeClient.CoreV1().Pods(common.OperatorNamespace).Get(ctx, current.Name, metav1.GetOptions{})
 		if err != nil && !apierrors.IsNotFound(err) {
 			return nil, err
 		}
@@ -345,7 +345,7 @@ func operatorPodForWireCheck(ctx context.Context, current *operatorPod) (*operat
 }
 
 func waitForOperatorLogContains(ctx context.Context, pod *operatorPod, substrings ...string) error {
-	return wait.PollUntilContextTimeout(ctx, pollInterval, operatorTimeout, true, func(ctx context.Context) (bool, error) {
+	return wait.PollUntilContextTimeout(ctx, common.PollInterval, common.PollTimeout, true, func(ctx context.Context) (bool, error) {
 		current, err := operatorPodForWireCheck(ctx, pod)
 		if err != nil {
 			return false, nil
@@ -396,7 +396,7 @@ func assertPlaintextHTTP(ctx context.Context, podIP string, port int) error {
 // NetworkPolicy/OVN convergence window instead of failing on one attempt.
 func waitForPlaintextHTTP(ctx context.Context, podIP string, port int) error {
 	var lastErr error
-	err := wait.PollUntilContextTimeout(ctx, pollInterval, wireRetryTimeout, true, func(ctx context.Context) (bool, error) {
+	err := wait.PollUntilContextTimeout(ctx, common.PollInterval, wireRetryTimeout, true, func(ctx context.Context) (bool, error) {
 		if lastErr = assertPlaintextHTTP(ctx, podIP, port); lastErr != nil {
 			return false, nil
 		}
@@ -410,8 +410,8 @@ func waitForPlaintextHTTP(ctx context.Context, podIP string, port int) error {
 }
 
 func getReadyOperandPodIP(ctx context.Context) (string, error) {
-	pods, err := kubeClient.CoreV1().Pods(operatorNamespace).List(ctx, metav1.ListOptions{
-		LabelSelector: "app=" + daemonSetName,
+	pods, err := kubeClient.CoreV1().Pods(common.OperatorNamespace).List(ctx, metav1.ListOptions{
+		LabelSelector: "app=" + common.DaemonSetName,
 	})
 	if err != nil {
 		return "", err
@@ -426,11 +426,11 @@ func getReadyOperandPodIP(ctx context.Context) (string, error) {
 			}
 		}
 	}
-	return "", fmt.Errorf("failed to find ready operand pod for DaemonSet %s", daemonSetName)
+	return "", fmt.Errorf("failed to find ready operand pod for DaemonSet %s", common.DaemonSetName)
 }
 
 func daemonSetHasContainerPort(ctx context.Context, port int32) (bool, error) {
-	ds, err := kubeClient.AppsV1().DaemonSets(operatorNamespace).Get(ctx, daemonSetName, metav1.GetOptions{})
+	ds, err := kubeClient.AppsV1().DaemonSets(common.OperatorNamespace).Get(ctx, common.DaemonSetName, metav1.GetOptions{})
 	if err != nil {
 		return false, err
 	}

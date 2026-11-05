@@ -162,8 +162,7 @@ var _ = Describe("tokenRequests", Ordered, func() {
 		})
 
 		It("rejects an attempt to revert tokenRequests.type back to Unmanaged", func() {
-			// Same conflict window as the secretRotation rejection spec:
-			// retry until the error is the CEL rejection, not a stale resourceVersion.
+			// retry until the error is the CEL rejection
 			err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
 				ctx, cancel := withAPITimeout()
 				defer cancel()

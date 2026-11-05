@@ -17,15 +17,6 @@ import (
 )
 
 const (
-	// driverName is both the ClusterCSIDriver singleton's name and the
-	// storage.k8s.io/v1 CSIDriver object's name.
-	driverName = "secrets-store.csi.k8s.io"
-	// operatorNamespace is where the operator and its node DaemonSet run.
-	operatorNamespace = "openshift-cluster-csi-drivers"
-	// daemonSetName is the driver's node DaemonSet.
-	daemonSetName = "secrets-store-csi-driver-node"
-	// csiDriverContainer is the driver container within the DaemonSet.
-	csiDriverContainer = "csi-driver"
 	// operatorDeploymentName is the operator Deployment and its app= label.
 	operatorDeploymentName = "secrets-store-csi-driver-operator"
 	operatorContainerName  = "secrets-store-csi-driver-operator"

@@ -8,6 +8,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/openshift/secrets-store-csi-driver-operator/test/e2e/common"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -22,7 +23,7 @@ import (
 // or Service IPs, and no in-cluster DNS. Curling a pod IP or a Service
 // DNS name from the test process fails no matter how long we retry.
 //
-// execClientPodName is a small pod created in operatorNamespace and left
+// execClientPodName is a small pod created in the operator namespace and left
 // running for the "TLS profile adherence" Describe (BeforeAll through
 // AfterAll in tls_profile_test.go). That Describe is part of the single
 // e2e suite registered by TestE2E. The checks exec into the pod and run
@@ -60,23 +61,23 @@ func execClientImage() string {
 // RestartPolicy is Never, so a Succeeded, Failed, or Unknown pod stays that
 // way. Waiting on Ready would just hit execPodReadyTimeout on every later call.
 func ensureExecClientPod(ctx context.Context) error {
-	pod, err := kubeClient.CoreV1().Pods(operatorNamespace).Get(ctx, execClientPodName, metav1.GetOptions{})
+	pod, err := kubeClient.CoreV1().Pods(common.OperatorNamespace).Get(ctx, execClientPodName, metav1.GetOptions{})
 	switch {
 	case err == nil:
 		if pod.Status.Phase == corev1.PodRunning {
 			return waitForExecClientPodReady(ctx)
 		}
 		if err := deleteExecClientPod(ctx); err != nil {
-			return fmt.Errorf("failed to delete non-Running exec-client pod %s/%s (phase=%s): %w", operatorNamespace, execClientPodName, pod.Status.Phase, err)
+			return fmt.Errorf("failed to delete non-Running exec-client pod %s/%s (phase=%s): %w", common.OperatorNamespace, execClientPodName, pod.Status.Phase, err)
 		}
 	case !apierrors.IsNotFound(err):
-		return fmt.Errorf("failed to check for existing exec-client pod %s/%s: %w", operatorNamespace, execClientPodName, err)
+		return fmt.Errorf("failed to check for existing exec-client pod %s/%s: %w", common.OperatorNamespace, execClientPodName, err)
 	}
 
 	newPod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      execClientPodName,
-			Namespace: operatorNamespace,
+			Namespace: common.OperatorNamespace,
 			Labels:    map[string]string{"app": execClientPodName},
 		},
 		Spec: corev1.PodSpec{
@@ -88,15 +89,15 @@ func ensureExecClientPod(ctx context.Context) error {
 			}},
 		},
 	}
-	if _, err := kubeClient.CoreV1().Pods(operatorNamespace).Create(ctx, newPod, metav1.CreateOptions{}); err != nil {
-		return fmt.Errorf("failed to create exec-client pod %s/%s: %w", operatorNamespace, execClientPodName, err)
+	if _, err := kubeClient.CoreV1().Pods(common.OperatorNamespace).Create(ctx, newPod, metav1.CreateOptions{}); err != nil {
+		return fmt.Errorf("failed to create exec-client pod %s/%s: %w", common.OperatorNamespace, execClientPodName, err)
 	}
 	return waitForExecClientPodReady(ctx)
 }
 
 func waitForExecClientPodReady(ctx context.Context) error {
-	err := wait.PollUntilContextTimeout(ctx, pollInterval, execPodReadyTimeout, true, func(ctx context.Context) (bool, error) {
-		pod, err := kubeClient.CoreV1().Pods(operatorNamespace).Get(ctx, execClientPodName, metav1.GetOptions{})
+	err := wait.PollUntilContextTimeout(ctx, common.PollInterval, execPodReadyTimeout, true, func(ctx context.Context) (bool, error) {
+		pod, err := kubeClient.CoreV1().Pods(common.OperatorNamespace).Get(ctx, execClientPodName, metav1.GetOptions{})
 		if err != nil {
 			return false, nil
 		}
@@ -108,7 +109,7 @@ func waitForExecClientPodReady(ctx context.Context) error {
 		return false, nil
 	})
 	if err != nil {
-		return fmt.Errorf("exec-client pod %s/%s did not become Ready within %s: %w", operatorNamespace, execClientPodName, execPodReadyTimeout, err)
+		return fmt.Errorf("exec-client pod %s/%s did not become Ready within %s: %w", common.OperatorNamespace, execClientPodName, execPodReadyTimeout, err)
 	}
 	return nil
 }
@@ -116,7 +117,7 @@ func waitForExecClientPodReady(ctx context.Context) error {
 // deleteExecClientPod deletes the pod created by ensureExecClientPod.
 // A missing pod is not an error: AfterAll also runs when the pod was never created.
 func deleteExecClientPod(ctx context.Context) error {
-	err := kubeClient.CoreV1().Pods(operatorNamespace).Delete(ctx, execClientPodName, metav1.DeleteOptions{})
+	err := kubeClient.CoreV1().Pods(common.OperatorNamespace).Delete(ctx, execClientPodName, metav1.DeleteOptions{})
 	if apierrors.IsNotFound(err) {
 		return nil
 	}
@@ -141,7 +142,7 @@ func execInClientPod(ctx context.Context, command []string) (stdout, stderr stri
 	req := kubeClient.CoreV1().RESTClient().Post().
 		Resource("pods").
 		Name(execClientPodName).
-		Namespace(operatorNamespace).
+		Namespace(common.OperatorNamespace).
 		SubResource("exec").
 		VersionedParams(&corev1.PodExecOptions{
 			Container: execClientContainerName,
@@ -182,7 +183,7 @@ func execInOperatorPod(ctx context.Context, podName string, command []string) (s
 	req := kubeClient.CoreV1().RESTClient().Post().
 		Resource("pods").
 		Name(podName).
-		Namespace(operatorNamespace).
+		Namespace(common.OperatorNamespace).
 		SubResource("exec").
 		VersionedParams(&corev1.PodExecOptions{
 			Container: operatorContainerName,

@@ -14,6 +14,7 @@ import (
 	. "github.com/onsi/gomega"
 
 	configv1 "github.com/openshift/api/config/v1"
+	"github.com/openshift/secrets-store-csi-driver-operator/test/e2e/common"
 	rbacv1 "k8s.io/api/rbac/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -345,7 +346,7 @@ var _ = Describe("TLS profile adherence", Label("tls"), Ordered, func() {
 	It("D5 serving cert secret delete triggers terminate-on-files", func() {
 		before, err := waitForOperatorReady(ctx)
 		Expect(err).NotTo(HaveOccurred())
-		err = kubeClient.CoreV1().Secrets(operatorNamespace).Delete(ctx, servingCertSecretName, metav1.DeleteOptions{})
+		err = kubeClient.CoreV1().Secrets(common.OperatorNamespace).Delete(ctx, servingCertSecretName, metav1.DeleteOptions{})
 		if apierrors.IsNotFound(err) {
 			Skip(fmt.Sprintf("serving cert secret %s not found", servingCertSecretName))
 		}
@@ -368,7 +369,7 @@ var _ = Describe("TLS profile adherence", Label("tls"), Ordered, func() {
 	})
 
 	It("E2 operand uses unix CSI socket", func() {
-		ds, err := kubeClient.AppsV1().DaemonSets(operatorNamespace).Get(ctx, daemonSetName, metav1.GetOptions{})
+		ds, err := kubeClient.AppsV1().DaemonSets(common.OperatorNamespace).Get(ctx, common.DaemonSetName, metav1.GetOptions{})
 		if apierrors.IsNotFound(err) {
 			Skip("operand DaemonSet not found")
 		}
@@ -399,8 +400,8 @@ var _ = Describe("TLS profile adherence", Label("tls"), Ordered, func() {
 	})
 
 	It("E4 operand DaemonSet still reconciled", func() {
-		err := wait.PollUntilContextTimeout(ctx, pollInterval, operatorTimeout, true, func(ctx context.Context) (bool, error) {
-			ds, err := kubeClient.AppsV1().DaemonSets(operatorNamespace).Get(ctx, daemonSetName, metav1.GetOptions{})
+		err := wait.PollUntilContextTimeout(ctx, common.PollInterval, common.PollTimeout, true, func(ctx context.Context) (bool, error) {
+			ds, err := kubeClient.AppsV1().DaemonSets(common.OperatorNamespace).Get(ctx, common.DaemonSetName, metav1.GetOptions{})
 			if apierrors.IsNotFound(err) {
 				return false, nil
 			}
@@ -483,10 +484,10 @@ var _ = Describe("TLS RBAC fail-loud", Label("tls", "tls-rbac"), Ordered, func()
 			return err
 		})).To(Succeed())
 
-		Expect(kubeClient.CoreV1().Pods(operatorNamespace).Delete(ctx, before.Name, metav1.DeleteOptions{})).To(Succeed())
+		Expect(kubeClient.CoreV1().Pods(common.OperatorNamespace).Delete(ctx, before.Name, metav1.DeleteOptions{})).To(Succeed())
 
-		err = wait.PollUntilContextTimeout(ctx, pollInterval, operatorTimeout, true, func(ctx context.Context) (bool, error) {
-			pods, err := kubeClient.CoreV1().Pods(operatorNamespace).List(ctx, metav1.ListOptions{
+		err = wait.PollUntilContextTimeout(ctx, common.PollInterval, common.PollTimeout, true, func(ctx context.Context) (bool, error) {
+			pods, err := kubeClient.CoreV1().Pods(common.OperatorNamespace).List(ctx, metav1.ListOptions{
 				LabelSelector: "app=" + operatorDeploymentName,
 			})
 			if err != nil {
@@ -532,14 +533,14 @@ func findOperatorClusterRoleName(ctx context.Context) (string, error) {
 		for _, sub := range crb.Subjects {
 			if sub.Kind == "ServiceAccount" &&
 				sub.Name == operatorDeploymentName &&
-				(sub.Namespace == operatorNamespace || sub.Namespace == "") {
+				(sub.Namespace == common.OperatorNamespace || sub.Namespace == "") {
 				if crb.RoleRef.Kind == "ClusterRole" && crb.RoleRef.Name != "" {
 					return crb.RoleRef.Name, nil
 				}
 			}
 		}
 	}
-	return "", fmt.Errorf("no ClusterRoleBinding found for SA %s/%s", operatorNamespace, operatorDeploymentName)
+	return "", fmt.Errorf("no ClusterRoleBinding found for SA %s/%s", common.OperatorNamespace, operatorDeploymentName)
 }
 
 func runTLSScenario(ctx context.Context, tc tlsScenario, lastUID *string) {
@@ -553,9 +554,6 @@ func runTLSScenario(ctx context.Context, tc tlsScenario, lastUID *string) {
 		err := updateClusterAPIServerTLSConfig(ctx, tc.profile, tc.adherence)
 		if tc.expectAPIError != "" {
 			Expect(err).To(HaveOccurred(), "expected API error containing %q", tc.expectAPIError)
-			if isTLSAdherenceUnsupported(err) {
-				Skip(fmt.Sprintf("apiserver tlsAdherence not available (enable FeatureGate TLSAdherence): %v", err))
-			}
 			Expect(err.Error()).To(ContainSubstring(tc.expectAPIError))
 			GinkgoWriter.Printf("%s blocked by API as expected: %v\n", tc.id, err)
 			return
@@ -581,7 +579,7 @@ func runTLSScenario(ctx context.Context, tc tlsScenario, lastUID *string) {
 		pod, err = waitForOperatorRestart(ctx, before.RestartKey)
 		Expect(err).NotTo(HaveOccurred(), "%s: expected operator restart", tc.id)
 	} else {
-		time.Sleep(2 * time.Second)
+		time.Sleep(common.PollInterval)
 		pod, err = waitForOperatorReady(ctx)
 		Expect(err).NotTo(HaveOccurred())
 	}

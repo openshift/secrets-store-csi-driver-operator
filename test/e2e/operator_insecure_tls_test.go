@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/openshift/secrets-store-csi-driver-operator/test/e2e/common"
 	"k8s.io/apimachinery/pkg/util/wait"
 )
 
@@ -73,7 +74,7 @@ func waitForDialTLS(ctx context.Context, pod *operatorPod, minVersion, maxVersio
 		return fmt.Errorf("operator pod is nil")
 	}
 	var lastErr error
-	err := wait.PollUntilContextTimeout(ctx, pollInterval, wireRetryTimeout, true, func(ctx context.Context) (bool, error) {
+	err := wait.PollUntilContextTimeout(ctx, common.PollInterval, wireRetryTimeout, true, func(ctx context.Context) (bool, error) {
 		current, resolveErr := operatorPodForWireCheck(ctx, pod)
 		if resolveErr != nil {
 			lastErr = resolveErr
