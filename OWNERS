@@ -1,13 +1,6 @@
 approvers:
-- bertinatto
 - dobsonj
-- gnufied
-- jsafrane
-- RomanBednar
-- mpatlasov
-- tsmetana
 - mytreya-rh
 - TrilokGeer
-- arkadeepsen
 - chiragkyal
 component: "Storage / Operators"
