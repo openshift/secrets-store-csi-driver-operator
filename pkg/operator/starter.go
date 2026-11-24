@@ -21,6 +21,7 @@ import (
 	configinformers "github.com/openshift/client-go/config/informers/externalversions"
 	applyoperatorv1 "github.com/openshift/client-go/operator/applyconfigurations/operator/v1"
 	"github.com/openshift/library-go/pkg/controller/controllercmd"
+	"github.com/openshift/library-go/pkg/operator/configobserver/featuregates"
 	"github.com/openshift/library-go/pkg/operator/csi/csicontrollerset"
 	"github.com/openshift/library-go/pkg/operator/csi/csidrivernodeservicecontroller"
 	goc "github.com/openshift/library-go/pkg/operator/genericoperatorclient"
@@ -38,6 +39,12 @@ const (
 	providerName       = "secrets-store.csi.k8s.io"
 	namespaceKey       = "${NAMESPACE}"
 	resync             = 20 * time.Minute
+
+	// missingVersionMarker is the OLM stand-in for this operator's payload
+	// version. Passing it as both version arguments makes FeatureGateAccess
+	// read the version from clusterversions/version instead of looking for a
+	// feature-gate list named "0.0.1-snapshot".
+	missingVersionMarker = "0.0.1-snapshot"
 )
 
 // RunOperator wires up and runs all operator controllers. resolvedTLS is the
@@ -69,19 +76,30 @@ func RunOperator(
 		InitialTLSProfileSpec:     resolvedTLS.Spec,
 		InitialTLSAdherencePolicy: resolvedTLS.Adherence,
 		OnChange: func() {
-			// HTTPS cannot be reconfigured in place. RequestShutdown follows the
-			// same SIGTERM path Controllercmd already wires (graceful unwind);
-			// os.Exit(0) is only a fallback if the signal handler is missing.
-			klog.Info("TLS security profile or adherence changed; requesting graceful operator restart")
-			if !apiserver.RequestShutdown() {
-				klog.Warning("failed to request a graceful shutdown, exiting directly")
-				os.Exit(0)
-			}
+			requestGracefulRestart("TLS security profile or adherence changed; requesting graceful operator restart")
 		},
 	}
 	if err := tlsWatcher.Start(configInformers.Config().V1().APIServers()); err != nil {
 		return fmt.Errorf("failed to start TLS security profile watcher: %w", err)
 	}
+
+	// A FeatureGate-only change does not update the APIServer object, so the
+	// profile watcher cannot see TLSGroupPreferences flip. Handlers are
+	// registered here, before configInformers.Start. The default handler exits
+	// on any gate change; replace it so only this gate restarts the process.
+	featureGateAccess := featuregates.NewFeatureGateAccess(
+		missingVersionMarker,
+		missingVersionMarker,
+		configInformers.Config().V1().ClusterVersions(),
+		configInformers.Config().V1().FeatureGates(),
+		controllerConfig.EventRecorder,
+	)
+	featureGateAccess.SetChangeHandler(func(change featuregates.FeatureChange) {
+		if !sscsitls.TLSGroupPreferencesFlipped(change) {
+			return
+		}
+		requestGracefulRestart("FeatureGate TLSGroupPreferences changed; requesting graceful operator restart")
+	})
 
 	// Create GenericOperatorclient. This is used by the library-go controllers created down below
 	gvr := opv1.SchemeGroupVersion.WithResource("clustercsidrivers")
@@ -171,6 +189,7 @@ func RunOperator(
 	go kubeInformersForNamespaces.Start(ctx.Done())
 	go dynamicInformers.Start(ctx.Done())
 	go configInformers.Start(ctx.Done())
+	go featureGateAccess.Run(ctx)
 
 	klog.Info("Starting controllerset")
 	go csiControllerSet.Run(ctx, 1)
@@ -178,6 +197,17 @@ func RunOperator(
 	<-ctx.Done()
 
 	return nil
+}
+
+// requestGracefulRestart asks Controllercmd to unwind. HTTPS serving cannot be
+// reconfigured in place. os.Exit is only a fallback when the signal handler is
+// missing.
+func requestGracefulRestart(reason string) {
+	klog.Info(reason)
+	if !apiserver.RequestShutdown() {
+		klog.Warning("failed to request a graceful shutdown, exiting directly")
+		os.Exit(0)
+	}
 }
 
 func replaceNamespaceFunc(namespace string) resourceapply.AssetFunc {

@@ -31,8 +31,9 @@
 
 - The operator creates a `Service` for metrics/healthz endpoints with `service.beta.openshift.io/serving-cert-secret-name` annotation — OpenShift's service-ca-operator auto-generates and rotates the TLS certificate.
 - Operator metrics are served over HTTPS on `:8443` via Controllercmd. Cipher suites and minimum TLS version come from `apiserver.config.openshift.io/cluster` when `spec.tlsAdherence` requires honoring the cluster profile (`StrictAllComponents`, or any unknown value). Empty / `LegacyAdheringComponentsOnly` keeps Controllercmd defaults for upgrade compatibility. See `pkg/tls/`.
-- Startup resolves the cluster TLS profile with retry/backoff (`ResolveFromCluster`) and, when honoring, writes a temp `GenericOperatorConfig` and points Controllercmd `--config` at it (stock `StartController`, no custom Run path). If every configured cipher is dropped by Go's crypto/tls mapping, a warning is logged.
-- A `SecurityProfileWatcher` watches both `tlsSecurityProfile` and `tlsAdherence` and restarts the operator at most once via `RequestShutdown` when either changes, or when live TLS settings become unresolvable.
+- When that profile is honored and the `TLSGroupPreferences` feature gate is enabled, `curvePreferences` are taken from the profile groups after FIPS filtering (`GetSecurityProfileGroups`). With the gate disabled, `curvePreferences` stays unset: named profiles already include default groups, and writing them early would change the handshake. Unknown group names are logged and dropped. An empty or fully filtered list omits `curvePreferences` so Go keeps its defaults. Unsupported groups do not fail startup.
+- Startup allows 90s, shared by kubeconfig, the APIServer Get, and the direct Gets of `clusterversions/version` and `featuregates/cluster`. The payload version is `status.desired.version`, or `status.history[0]` when desired is empty, matching the long-lived FeatureGate accessor. A timeout or failed read fails startup. A payload version that does not list `TLSGroupPreferences` is treated as the gate being disabled. When the profile is honored, the operator writes a temp `GenericOperatorConfig` and points Controllercmd `--config` at it (stock `StartController`, no custom Run path). If every configured cipher is dropped by Go's crypto/tls mapping, startup fails instead of serving Controllercmd defaults.
+- A `SecurityProfileWatcher` watches both `tlsSecurityProfile` (including groups) and `tlsAdherence` and restarts the operator at most once via `RequestShutdown` when either changes, or when live TLS settings become unresolvable. A long-lived FeatureGate watch on the operator's config informers uses that same restart path when `TLSGroupPreferences` changes between enabled and disabled. A gate missing from both lists counts as disabled. The initial gate callback does not restart the process.
 - Do not check the `TLSAdherence` feature gate in operator code — an unset `tlsAdherence` field unmarshals as empty and is treated as Legacy.
 - CA bundles are injected via ConfigMaps annotated with `config.openshift.io/inject-trusted-cabundle: "true"` (see `assets/cabundle_cm.yaml`).
 - Prefer annotation-based auto-provisioning over hard-coding certificates or keys in manifests.
@@ -57,7 +58,7 @@
 
 ## Network and Port Security
 
-- Operator metrics are served on container port 8443 over HTTPS (service-CA cert + cluster TLS profile when adherence requires it).
+- Operator metrics are served on container port 8443 over HTTPS (service-CA cert + cluster TLS profile, including groups when `TLSGroupPreferences` is enabled, when adherence requires it).
 - Operand (CSI driver) metrics are served on container port 8095 over plaintext HTTP; the CSI gRPC endpoint listens on a Unix socket at `/csi/csi.sock`. Prefer Unix sockets for driver endpoints to avoid network exposure.
 - Liveness probes use HTTP on port 9808, served by the `csi-liveness-probe` sidecar container.
 

@@ -68,7 +68,9 @@ func newStartCommand() *cobra.Command {
 		if err != nil {
 			return err
 		}
-		resolvedTLS, err = sscsitls.ResolveFromCluster(context.Background(), kubeConfigFile, componentName)
+		resolveCtx, cancel := context.WithTimeout(cmd.Context(), sscsitls.StartupBudget)
+		defer cancel()
+		resolvedTLS, err = sscsitls.ResolveFromCluster(resolveCtx, kubeConfigFile, componentName)
 		if err != nil {
 			return fmt.Errorf("failed to resolve cluster TLS security profile: %w", err)
 		}
