@@ -14,6 +14,10 @@ type CSISnapshotControllerListerExpansion interface{}
 // CloudCredentialLister.
 type CloudCredentialListerExpansion interface{}
 
+// ClusterAPIListerExpansion allows custom methods to be added to
+// ClusterAPILister.
+type ClusterAPIListerExpansion interface{}
+
 // ClusterCSIDriverListerExpansion allows custom methods to be added to
 // ClusterCSIDriverLister.
 type ClusterCSIDriverListerExpansion interface{}
@@ -33,6 +37,10 @@ type DNSListerExpansion interface{}
 // EtcdListerExpansion allows custom methods to be added to
 // EtcdLister.
 type EtcdListerExpansion interface{}
+
+// IngressListerExpansion allows custom methods to be added to
+// IngressLister.
+type IngressListerExpansion interface{}
 
 // IngressControllerListerExpansion allows custom methods to be added to
 // IngressControllerLister.
