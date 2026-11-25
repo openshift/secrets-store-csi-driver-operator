@@ -172,6 +172,24 @@ func TestApplyToServingInfo(t *testing.T) {
 	modern := *configv1.TLSProfiles[configv1.TLSProfileModernType]
 	modernIANA := libgocrypto.OpenSSLToIANACipherSuites(modern.Ciphers)
 
+	customGroups := configv1.TLSProfileSpec{
+		Ciphers:       modern.Ciphers,
+		MinTLSVersion: configv1.VersionTLS12,
+		Groups: []configv1.TLSGroup{
+			configv1.TLSGroupSecP384r1,
+			configv1.TLSGroup("NOT-A-GROUP"),
+		},
+	}
+	emptyGroups := configv1.TLSProfileSpec{
+		Ciphers:       modern.Ciphers,
+		MinTLSVersion: configv1.VersionTLS12,
+	}
+	unknownGroups := configv1.TLSProfileSpec{
+		Ciphers:       modern.Ciphers,
+		MinTLSVersion: configv1.VersionTLS12,
+		Groups:        []configv1.TLSGroup{"NOT-A-GROUP"},
+	}
+
 	tests := []struct {
 		name        string
 		nilServing  bool
@@ -179,6 +197,7 @@ func TestApplyToServingInfo(t *testing.T) {
 		wantErr     bool
 		wantMinTLS  string
 		wantCiphers []string
+		wantCurves  []int32
 	}{
 		{
 			name: "does not mutate when Honor is false",
@@ -186,17 +205,67 @@ func TestApplyToServingInfo(t *testing.T) {
 				Adherence: configv1.TLSAdherencePolicyLegacyAdheringComponentsOnly,
 				Spec:      modern,
 				Honor:     false,
+				UseGroups: true,
 			},
 		},
 		{
-			name: "applies IANA ciphers when Honor is true",
+			name: "gate off writes min version and ciphers without curve preferences",
 			resolved: ResolvedProfile{
 				Adherence: configv1.TLSAdherencePolicyStrictAllComponents,
 				Spec:      modern,
 				Honor:     true,
+				UseGroups: false,
 			},
 			wantMinTLS:  string(modern.MinTLSVersion),
 			wantCiphers: modernIANA,
+		},
+		{
+			name: "gate on writes curve IDs from the honored profile",
+			resolved: ResolvedProfile{
+				Adherence: configv1.TLSAdherencePolicyStrictAllComponents,
+				Spec:      modern,
+				Honor:     true,
+				UseGroups: true,
+			},
+			wantMinTLS:  string(modern.MinTLSVersion),
+			wantCiphers: modernIANA,
+			wantCurves:  expectedCurvePreferences(modern),
+		},
+		{
+			name: "gate on writes custom groups and drops unknown names",
+			resolved: ResolvedProfile{
+				Adherence: configv1.TLSAdherencePolicyStrictAllComponents,
+				Spec:      customGroups,
+				Honor:     true,
+				UseGroups: true,
+			},
+			wantMinTLS:  string(customGroups.MinTLSVersion),
+			wantCiphers: modernIANA,
+			wantCurves:  expectedCurvePreferences(customGroups),
+		},
+		{
+			name: "empty groups omit curve preferences",
+			resolved: ResolvedProfile{
+				Adherence: configv1.TLSAdherencePolicyStrictAllComponents,
+				Spec:      emptyGroups,
+				Honor:     true,
+				UseGroups: true,
+			},
+			wantMinTLS:  string(emptyGroups.MinTLSVersion),
+			wantCiphers: modernIANA,
+			wantCurves:  expectedCurvePreferences(emptyGroups),
+		},
+		{
+			name: "fully filtered groups omit curve preferences",
+			resolved: ResolvedProfile{
+				Adherence: configv1.TLSAdherencePolicyStrictAllComponents,
+				Spec:      unknownGroups,
+				Honor:     true,
+				UseGroups: true,
+			},
+			wantMinTLS:  string(unknownGroups.MinTLSVersion),
+			wantCiphers: modernIANA,
+			wantCurves:  expectedCurvePreferences(unknownGroups),
 		},
 		{
 			name:       "nil servingInfo is a no-op",
@@ -243,6 +312,20 @@ func TestApplyToServingInfo(t *testing.T) {
 			if !reflect.DeepEqual(serving.CipherSuites, tt.wantCiphers) {
 				t.Fatalf("CipherSuites = %#v, want %#v", serving.CipherSuites, tt.wantCiphers)
 			}
+			if !reflect.DeepEqual(serving.CurvePreferences, tt.wantCurves) {
+				t.Fatalf("CurvePreferences = %#v, want %#v", serving.CurvePreferences, tt.wantCurves)
+			}
 		})
 	}
+}
+
+// expectedCurvePreferences builds the curve IDs ApplyToServingInfo writes.
+// Routing through GetSecurityProfileGroups keeps FIPS and non-FIPS runs aligned
+// with the production filter. An empty result is nil because the field is omitted.
+func expectedCurvePreferences(spec configv1.TLSProfileSpec) []int32 {
+	curves, _ := libgocrypto.TLSGroupsToCurvePreferences(libgocrypto.GetSecurityProfileGroups(&spec))
+	if len(curves) == 0 {
+		return nil
+	}
+	return curves
 }

@@ -13,6 +13,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	corev1 "k8s.io/client-go/informers/core/v1"
+	"k8s.io/klog/v2"
 
 	configv1 "github.com/openshift/api/config/v1"
 	opv1 "github.com/openshift/api/operator/v1"
@@ -222,8 +223,9 @@ func WithPlaceholdersHook(configInformer configinformers.SharedInformerFactory) 
 	}
 }
 
-// WithServingInfo is a manifest hook that replaces ${TLS_CIPHER_SUITES} and ${TLS_MIN_VERSION}
-// placeholders with the observed configuration.
+// WithServingInfo is a manifest hook that replaces ${TLS_CIPHER_SUITES},
+// ${TLS_MIN_VERSION} and ${TLS_CURVE_PREFERENCES} placeholders with the observed
+// configuration.
 func WithServingInfo() dc.ManifestHookFunc {
 	return func(opSpec *opv1.OperatorSpec, manifest []byte) ([]byte, error) {
 		if len(opSpec.ObservedConfig.Raw) == 0 {
@@ -252,24 +254,83 @@ func WithServingInfo() dc.ManifestHookFunc {
 		}
 
 		pairs := []string{}
-		if cipherSuitesFound && len(cipherSuites) > 0 {
-			pairs = append(pairs, []string{"${TLS_CIPHER_SUITES}", strings.Join(cipherSuites, ",")}...)
-
+		if minTLSVersionFound && len(minTLSVersion) == 0 {
+			// It is possible to set a custom profile with no MinTLSVersion.
+			// In this case, the observer will return an empty string, and we
+			// fall back to the default (the same as when no profile is set).
+			minTLSVersion = defaultMinTLSVersion
 		}
 
-		// It is possible to set a custom profile with no MinTLSVersion.
-		// In this case, the observer will return an empty string, and we
-		// fall back to the default (the same as when no profile is set).
+		if len(cipherSuites) > 0 {
+			pairs = append(pairs, []string{"${TLS_CIPHER_SUITES}", strings.Join(cipherSuites, ",")}...)
+		} else if minTLSVersion == string(configv1.VersionTLS13) {
+			// TLS 1.3 cipher suites cannot be configured through this flag. Remove
+			// the complete argument instead of passing an empty value to kube-rbac-proxy.
+			manifest = removeCipherSuitesArgument(manifest)
+		} else {
+			return nil, fmt.Errorf("empty servingInfo.cipherSuites config is only supported with TLS 1.3")
+		}
+
 		if minTLSVersionFound {
-			if len(minTLSVersion) == 0 {
-				minTLSVersion = defaultMinTLSVersion
-			}
 			pairs = append(pairs, []string{"${TLS_MIN_VERSION}", minTLSVersion}...)
+		}
+
+		// curvePreferences are stored as TLSGroup names ([]string). Unlike
+		// cipherSuites/minTLSVersion, they are optional (gated by the
+		// TLSGroupPreferences feature gate), so a missing value is not an error: we
+		// simply drop the flag. kube-rbac-proxy expects numeric curve IDs, so the
+		// names are converted here.
+		curveGroups, _, err := unstructured.NestedStringSlice(config, csiconfigobservercontroller.CurvePreferencesPath()...)
+		if err != nil {
+			return nil, fmt.Errorf("couldn't get the servingInfo.curvePreferences config from observed config: %w", err)
+		}
+		curvePreferences, unrecognized := libgocrypto.TLSGroupsToCurvePreferences(curveGroups)
+		if len(unrecognized) > 0 {
+			// Log and continue rather than failing hard, so an unknown group name
+			// does not block the whole deployment.
+			klog.Warningf("ignoring unrecognized TLS groups in servingInfo.curvePreferences: %v", unrecognized)
+		}
+		if len(curvePreferences) > 0 {
+			curveIDs := make([]string, len(curvePreferences))
+			for i, id := range curvePreferences {
+				curveIDs[i] = strconv.Itoa(int(id))
+			}
+			pairs = append(pairs, []string{"${TLS_CURVE_PREFERENCES}", strings.Join(curveIDs, ",")}...)
+		} else {
+			// No (recognized) curves to set. Remove the complete argument instead of
+			// passing an empty value to kube-rbac-proxy.
+			manifest = removeCurvePreferencesArgument(manifest)
 		}
 
 		replaced := strings.NewReplacer(pairs...).Replace(string(manifest))
 		return []byte(replaced), nil
 	}
+}
+
+func removeCipherSuitesArgument(manifest []byte) []byte {
+	const cipherSuitesArgument = "- --tls-cipher-suites=${TLS_CIPHER_SUITES}"
+
+	var rendered bytes.Buffer
+	for _, line := range bytes.SplitAfter(manifest, []byte("\n")) {
+		if bytes.Equal(bytes.TrimSpace(line), []byte(cipherSuitesArgument)) {
+			continue
+		}
+		rendered.Write(line)
+	}
+	return rendered.Bytes()
+}
+
+func removeCurvePreferencesArgument(manifest []byte) []byte {
+	const curvePreferencesArgument = "- --tls-curve-preferences=${TLS_CURVE_PREFERENCES}"
+
+	var rendered bytes.Buffer
+	for _, line := range bytes.SplitAfter(manifest, []byte("\n")) {
+		if bytes.Equal(bytes.TrimSpace(line), []byte(curvePreferencesArgument)) {
+			continue
+		}
+		rendered.Write(line)
+	}
+	return rendered.Bytes()
 }
 
 // WithControlPlaneTopologyHook modifies the nodeSelector of the deployment

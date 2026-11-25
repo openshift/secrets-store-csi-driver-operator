@@ -27,6 +27,11 @@ type ResolvedProfile struct {
 	Spec configv1.TLSProfileSpec
 	// Honor is true when ShouldHonorClusterTLSProfile(Adherence) is true.
 	Honor bool
+	// UseGroups is true when the TLSGroupPreferences feature gate is enabled.
+	// Curve preferences are written only when Honor and UseGroups are both true.
+	// Named profiles already carry default groups; applying them with the gate
+	// disabled would change the metrics server's handshake.
+	UseGroups bool
 }
 
 // FetchAndResolve loads apiserver.config.openshift.io/cluster and resolves the
@@ -38,6 +43,9 @@ type ResolvedProfile struct {
 //   - Honor=false (Legacy / empty adherence): Spec is still resolved for watcher seeding,
 //     but ApplyToServingInfo will leave Controllercmd defaults alone
 //   - Honor=true: ApplyToServingInfo writes Spec into ServingInfo
+//
+// UseGroups is left false. ResolveFromCluster sets it from the
+// TLSGroupPreferences feature gate, which is not part of the APIServer object.
 func FetchAndResolve(ctx context.Context, client configv1client.APIServersGetter) (ResolvedProfile, error) {
 	apiServer, err := client.APIServers().Get(ctx, APIServerName, metav1.GetOptions{})
 	if err != nil {
@@ -107,6 +115,13 @@ func GetTLSProfileSpec(profile *configv1.TLSSecurityProfile) (configv1.TLSProfil
 // When Honor is true and the profile lists ciphers that OpenSSLToIANACipherSuites
 // drops entirely, an error is returned so Controllercmd defaults are not selected
 // in place of the cluster policy.
+//
+// CurvePreferences are set only when UseGroups is also true. The groups come from
+// GetSecurityProfileGroups, which drops non-FIPS groups while the process is in
+// FIPS mode, then TLSGroupsToCurvePreferences. Unknown group names are logged and
+// dropped. An empty result leaves CurvePreferences unset so Go keeps its defaults.
+// Unsupported groups do not fail startup; a handshake fails later only if nothing
+// usable remains.
 func ApplyToServingInfo(servingInfo *configv1.HTTPServingInfo, resolved ResolvedProfile) error {
 	if servingInfo == nil || !resolved.Honor {
 		if servingInfo != nil && !resolved.Honor {
@@ -127,7 +142,19 @@ func ApplyToServingInfo(servingInfo *configv1.HTTPServingInfo, resolved Resolved
 
 	servingInfo.MinTLSVersion = string(resolved.Spec.MinTLSVersion)
 	servingInfo.CipherSuites = cipherSuites
-	klog.Infof("Applied cluster TLS profile to metrics serving config: minTLSVersion=%s, cipherSuites=%v",
-		servingInfo.MinTLSVersion, servingInfo.CipherSuites)
+
+	if resolved.UseGroups {
+		groupNames := libgocrypto.GetSecurityProfileGroups(&resolved.Spec)
+		curvePreferences, unknownGroups := libgocrypto.TLSGroupsToCurvePreferences(groupNames)
+		if len(unknownGroups) > 0 {
+			klog.Warningf("ignoring unknown TLS groups from the cluster security profile: %v", unknownGroups)
+		}
+		if len(curvePreferences) > 0 {
+			servingInfo.CurvePreferences = curvePreferences
+		}
+	}
+
+	klog.Infof("Applied cluster TLS profile to metrics serving config: minTLSVersion=%s, cipherSuites=%v, curvePreferences=%v, useGroups=%t",
+		servingInfo.MinTLSVersion, servingInfo.CipherSuites, servingInfo.CurvePreferences, resolved.UseGroups)
 	return nil
 }
