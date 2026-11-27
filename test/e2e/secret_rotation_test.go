@@ -7,6 +7,7 @@ import (
 	opv1 "github.com/openshift/api/operator/v1"
 	"github.com/openshift/secrets-store-csi-driver-operator/test/e2e/common"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/util/retry"
 )
 
 var _ = Describe("secret rotation", func() {
@@ -39,17 +40,25 @@ var _ = Describe("secret rotation", func() {
 	})
 
 	It("rejects secretRotation.type Custom without a custom block", func() {
-		ctx, cancel := withAPITimeout()
-		defer cancel()
-		driver, err := clusterCSIDriverClient.Get(ctx, common.DriverName, metav1.GetOptions{})
-		Expect(err).NotTo(HaveOccurred())
+		// Get+Update races the operator's status writes on this object.
+		// A conflict is not the validation failure under test; re-read and
+		// try again until the API returns that error.
+		err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+			ctx, cancel := withAPITimeout()
+			defer cancel()
+			driver, err := clusterCSIDriverClient.Get(ctx, common.DriverName, metav1.GetOptions{})
+			if err != nil {
+				return err
+			}
 
-		driver.Spec.DriverConfig.DriverType = opv1.SecretsStoreDriverType
-		driver.Spec.DriverConfig.SecretsStore.SecretRotation = opv1.SecretsStoreSecretRotation{
-			Type: opv1.SecretRotationCustom,
-			// custom intentionally omitted.
-		}
-		_, err = clusterCSIDriverClient.Update(ctx, driver, metav1.UpdateOptions{})
+			driver.Spec.DriverConfig.DriverType = opv1.SecretsStoreDriverType
+			driver.Spec.DriverConfig.SecretsStore.SecretRotation = opv1.SecretsStoreSecretRotation{
+				Type: opv1.SecretRotationCustom,
+				// custom intentionally omitted.
+			}
+			_, err = clusterCSIDriverClient.Update(ctx, driver, metav1.UpdateOptions{})
+			return err
+		})
 
 		Expect(err).To(HaveOccurred(), "expected the API server to reject secretRotation.type Custom without a custom block")
 		Expect(err.Error()).To(ContainSubstring("custom must be set when type is 'Custom'"))
